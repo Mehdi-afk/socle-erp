@@ -1,0 +1,40 @@
+name: "✨ Fonctionnalité"
+description: "Proposer une évolution ou un nouveau module."
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Besoin
+      description: Quel problème métier cette évolution résout-elle, et pour qui ?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Périmètre
+      options:
+        - Cœur / framework
+        - Module community existant
+        - Nouveau module
+        - Localisation France
+        - Localisation Algérie
+        - Documentation
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vérifications
+      options:
+        - label: "J'ai lu docs/ARCHITECTURE.md ; si la proposition s'en écarte, un ADR sera nécessaire."
+          required: true
+        - label: "La proposition a un impact sur la sécurité, les données personnelles ou la conformité légale."

@@ -1,0 +1,57 @@
+name: "🐞 Bug"
+description: "Signaler un comportement incorrect (hors vulnérabilité de sécurité)."
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **Une faille de sécurité ne se signale pas ici** : utilisez le [signalement privé](https://github.com/Mehdi-afk/socle-erp/security/advisories/new).
+        Ne collez aucune donnée personnelle, aucun mot de passe ni jeton.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Que se passe-t-il ?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version ou commit
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - En ligne
+        - Hors ligne
+        - Pendant la synchronisation
+        - Non applicable
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environnement
+      description: SaaS / auto-hébergé, navigateur, système, modules installés.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Journaux
+      description: Retirez toute donnée sensible avant de coller.
+      render: text

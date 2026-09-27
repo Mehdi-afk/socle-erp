@@ -1,0 +1,20 @@
+# Normalize line endings to LF everywhere
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.xlsx binary
+*.zip binary
+*.wasm binary
+
+# Generated files: collapsed in diffs
+pnpm-lock.yaml linguist-generated=true -diff

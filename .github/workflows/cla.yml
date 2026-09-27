@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+#
+# In-house CLA check (no third-party action).
+# - Sets a commit status "cla" on the PR head commit.
+# - A contributor signs by commenting the exact phrase from CLA.md on their PR.
+# - Signatures are stored in signatures.json on the unprotected "cla-signatures" branch.
+#
+# SECURITY: this workflow runs on pull_request_target with write permissions.
+# It must NEVER check out or execute code from the pull request. All
+# untrusted values (comment body, logins) are passed through env vars only.
+name: cla
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cla-signatures
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       (contains(github.event.comment.body, 'I hereby sign the CLA') ||
+        github.event.comment.body == 'recheck cla'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write        # update signatures.json on the cla-signatures branch
+      statuses: write        # set the "cla" commit status
+      pull-requests: write   # post the instructions comment
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      EVENT: ${{ github.event_name }}
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+      COMMENT_BODY: ${{ github.event.comment.body }}
+      COMMENTER_ID: ${{ github.event.comment.user.id }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      ALLOWLIST: "Mehdi-afk dependabot[bot] renovate[bot] github-actions[bot]"
+      PHRASE: "I have read the CLA Document and I hereby sign the CLA"
+      BRANCH: cla-signatures
+      FILE: signatures.json
+      MARKER: "<!-- socle-cla -->"
+    steps:
+      - name: Check CLA signature
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_json=$(gh api "repos/$REPO/pulls/$PR_NUMBER")
+          author=$(jq -r '.user.login' <<<"$pr_json")
+          author_id=$(jq -r '.user.id' <<<"$pr_json")
+          head_sha=$(jq -r '.head.sha' <<<"$pr_json")
+
+          set_status() {
+            gh api -X POST "repos/$REPO/statuses/$head_sha" \
+              -f state="$1" -f context=cla -f description="$2" >/dev/null
+          }
+
+          for allowed in $ALLOWLIST; do
+            if [ "$author" = "$allowed" ]; then
+              set_status success "CLA not required for $author"
+              exit 0
+            fi
+          done
+
+          # A read failure must never be treated as "no signatures": fail loudly.
+          file_json=$(gh api "repos/$REPO/contents/$FILE?ref=$BRANCH")
+          file_sha=$(jq -r '.sha' <<<"$file_json")
+          signatures=$(jq -r '.content' <<<"$file_json" | base64 -d)
+          jq -e '.signatures | type == "array"' <<<"$signatures" >/dev/null
+
+          already=$(jq --argjson id "$author_id" '[.signatures[] | select(.id == $id)] | length' <<<"$signatures")
+          if [ "$already" -gt 0 ]; then
+            set_status success "CLA signed by $author"
+            exit 0
+          fi
+
+          body=$(printf '%s' "${COMMENT_BODY:-}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ "$EVENT" = "issue_comment" ] && [ "$COMMENTER_ID" = "$author_id" ] && [ "$body" = "$PHRASE" ]; then
+            cla_version=$(gh api "repos/$REPO/contents/CLA.md" --jq '.sha')
+            now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            updated=$(jq --arg login "$author" --argjson id "$author_id" \
+              --argjson pr "$PR_NUMBER" --argjson comment "$COMMENT_ID" \
+              --arg at "$now" --arg version "$cla_version" \
+              '.signatures += [{login: $login, id: $id, pr: $pr, commentId: $comment, signedAt: $at, claVersion: $version}]' \
+              <<<"$signatures")
+            # Optimistic concurrency: the PUT fails if the file changed since we read it.
+            gh api -X PUT "repos/$REPO/contents/$FILE" \
+              -f message="chore(cla): record signature of $author (#$PR_NUMBER)" \
+              -f branch="$BRANCH" -f sha="$file_sha" \
+              -f content="$(printf '%s\n' "$updated" | base64 -w0)" >/dev/null
+            set_status success "CLA signed by $author"
+            exit 0
+          fi
+
+          existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\"))] | length" | awk '{s+=$1} END {print s+0}')
+          if [ "$existing" -eq 0 ]; then
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body="$MARKER
+          Merci pour votre contribution ! / Thank you for your contribution!
+
+          Avant de pouvoir fusionner cette PR, merci de lire le [CLA](https://github.com/$REPO/blob/main/CLA.md) puis de publier **ici** un commentaire contenant exactement :
+          Before this PR can be merged, please read the [CLA](https://github.com/$REPO/blob/main/CLA.md) and post **here** a comment containing exactly:
+
+          \`\`\`
+          $PHRASE
+          \`\`\`" >/dev/null
+          fi
+
+          set_status failure "CLA not signed by $author — see PR comment"
+          exit 1
