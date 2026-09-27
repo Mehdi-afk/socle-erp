@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# Socle-specific Semgrep rules (ARCHITECTURE.md §9.2). Blocking in CI.
+rules:
+  - id: socle-no-dynamic-code
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: eval / new Function are forbidden.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+
+  - id: socle-no-raw-sql
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Raw SQL is only allowed through Kysely's sql`` template (never sql.raw or string concatenation).
+    pattern-either:
+      - pattern: sql.raw(...)
+      - pattern: $DB.query($A + $B, ...)
+      - pattern: $DB.unsafe(...)
+
+  - id: socle-no-unsanitized-html
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: dangerouslySetInnerHTML is forbidden outside the DOMPurify-based SafeHtml component.
+    paths:
+      exclude: ['/packages/ui/src/safe-html/**']
+    pattern: <$EL dangerouslySetInnerHTML={...} />

@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+  - modules/*
+
+# Supply chain (ARCHITECTURE.md §9.4)
+# A version published less than 7 days ago is never installed (value in minutes).
+minimumReleaseAge: 10080
+# Refuse a version whose publication is less trusted than a previous one (e.g. provenance dropped).
+trustPolicy: no-downgrade
+# Transitive dependencies may only come from the registry (no git/tarball URLs).
+blockExoticSubdeps: true
+# Dependency install scripts are denied by default; each exception is listed and justified here.
+# (pnpm >= 11 replaced `onlyBuiltDependencies` with `allowBuilds`.)
+allowBuilds:
+  # Its postinstall only runs `lefthook install`, which our own `prepare` script already does.
+  lefthook: false
