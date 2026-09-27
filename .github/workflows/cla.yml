@@ -25,6 +25,9 @@ concurrency:
 
 jobs:
   cla:
+    # The job is named differently from the "cla" commit status it sets, so that an old failed
+    # run cannot keep blocking a PR once the contributor has signed.
+    name: cla-check
     if: >-
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request &&
