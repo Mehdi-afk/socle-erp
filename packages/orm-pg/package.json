@@ -16,12 +16,14 @@
     "@socle/testing": "workspace:*",
     "@types/node": "^24.13.6",
     "@types/pg": "^8.23.1",
+    "@types/semver": "^7.8.0",
     "fast-check": "^4.10.2"
   },
   "dependencies": {
     "@socle/framework": "workspace:*",
     "kysely": "^0.29.6",
     "pg": "^8.23.0",
+    "semver": "^7.8.5",
     "zod": "^4.6.5"
   }
 }

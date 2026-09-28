@@ -13,6 +13,8 @@ import { createPgDatabase, type Executor } from './database.js';
 export interface TestDatabases {
   /** Creates an empty database and returns a pool on it (closed at the end of the file). */
   create(): Promise<Executor>;
+  /** Same, with the database name and a pool on the `postgres` maintenance database. */
+  createNamed(): Promise<{ db: Executor; name: string; admin: Executor }>;
 }
 
 export function useTestDatabases(): TestDatabases {
@@ -28,21 +30,23 @@ export function useTestDatabases(): TestDatabases {
     await server?.stop();
   }, 60_000);
 
+  const createNamed = async (): Promise<{ db: Executor; name: string; admin: Executor }> => {
+    if (!server) throw new Error('PostgreSQL is not started');
+    const name = `test_${randomUUID().replaceAll('-', '')}`;
+    const admin = createPgDatabase({ connectionString: server.url, max: 2 });
+    pools.push(admin);
+    await sql`create database ${sql.id(name)}`.execute(admin);
+    const url = new URL(server.url);
+    url.pathname = `/${name}`;
+    const db = createPgDatabase({ connectionString: url.toString(), max: 4 });
+    pools.push(db);
+    return { db, name, admin };
+  };
+
   return {
+    createNamed,
     async create(): Promise<Executor> {
-      if (!server) throw new Error('PostgreSQL is not started');
-      const name = `test_${randomUUID().replaceAll('-', '')}`;
-      const admin = createPgDatabase({ connectionString: server.url, max: 1 });
-      try {
-        await sql`create database ${sql.id(name)}`.execute(admin);
-      } finally {
-        await admin.destroy();
-      }
-      const url = new URL(server.url);
-      url.pathname = `/${name}`;
-      const pool = createPgDatabase({ connectionString: url.toString(), max: 4 });
-      pools.push(pool);
-      return pool;
+      return (await createNamed()).db;
     },
   };
 }
