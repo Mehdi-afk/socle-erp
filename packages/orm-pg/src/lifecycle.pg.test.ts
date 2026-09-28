@@ -4,9 +4,11 @@
 // a real PostgreSQL (ARCHITECTURE.md §4.7).
 import {
   buildModelRegistry,
+  defineData,
   defineModel,
   extendModel,
   f,
+  ref,
   type ModelDefinition,
   type ModelExtension,
   type ModuleModels,
@@ -255,5 +257,114 @@ describe('snapshots', () => {
     await snapshots.drop(snapshot);
     expect((await snapshots.list()).some((s) => s.name === snapshot.name)).toBe(false);
     await expect(snapshots.restore(snapshot)).rejects.toThrow(/Unknown snapshot/);
+  });
+});
+
+describe('module data', () => {
+  const tags = (names: Record<string, string>, noupdate = false) =>
+    defineData(
+      'lc.tag',
+      Object.entries(names).map(([id, name]) => ({ id, values: { name } })),
+      { noupdate },
+    );
+  const tagNames = async (db: Executor) =>
+    (await rows(db, sql`select name from lc_tag order by name`)).map((row) => row.name);
+
+  it('loads records with external ids, updates them on upgrade and keeps noupdate ones', async () => {
+    const { db, snapshots } = await tenant();
+    const install = await upgradeModules({
+      db,
+      registry: v1,
+      snapshots,
+      modules: [
+        {
+          name: 'lc_base',
+          version: '1.0.0',
+          data: [
+            tags({ red: 'Red', blue: 'Blue' }),
+            tags({ default: 'Default' }, true),
+            defineData('lc.partner', [
+              { id: 'acme', values: { name: 'Acme', tagIds: [ref('lc_base.red')] } },
+            ]),
+          ],
+        },
+      ],
+    });
+    expect(install.data).toEqual({ lc_base: { created: 4, updated: 0, kept: 0 } });
+    expect(await tagNames(db)).toEqual(['Blue', 'Default', 'Red']);
+    expect(
+      await rows(
+        db,
+        sql`select t.name from lc_partner_tag_ids_rel r join lc_tag t on t.id = r.target_id`,
+      ),
+    ).toEqual([{ name: 'Red' }]);
+
+    // The administrator renames the noupdate tag and deletes an updatable one.
+    await sql`update lc_tag set name = 'Mine' where name = 'Default'`.execute(db);
+    await sql`delete from lc_tag where name = 'Blue'`.execute(db);
+
+    const upgrade = await upgradeModules({
+      db,
+      registry: v1,
+      snapshots,
+      modules: [
+        {
+          name: 'lc_base',
+          version: '1.1.0',
+          data: [tags({ red: 'Crimson', blue: 'Blue' }), tags({ default: 'Default' }, true)],
+        },
+      ],
+    });
+    // red updated, blue recreated, default left as changed.
+    expect(upgrade.data).toEqual({ lc_base: { created: 1, updated: 1, kept: 1 } });
+    expect(await tagNames(db)).toEqual(['Blue', 'Crimson', 'Mine']);
+    expect(await rows(db, sql`select count(*)::int as n from lc_tag`)).toEqual([{ n: 3 }]);
+  });
+
+  it('refuses an unknown reference and rolls the installation back', async () => {
+    const { db, snapshots } = await tenant();
+    const failure = upgradeModules({
+      db,
+      registry: v1,
+      snapshots,
+      modules: [
+        {
+          name: 'lc_base',
+          version: '1.0.0',
+          data: [
+            defineData('lc.partner', [
+              { id: 'acme', values: { name: 'Acme', tagIds: [ref('lc_base.ghost')] } },
+            ]),
+          ],
+        },
+      ],
+    });
+    await expect(failure).rejects.toThrow(/unknown reference "lc_base.ghost"/);
+    expect(await installedModules(db)).toEqual(new Map());
+  });
+
+  it('removes the records a module loaded into other modules at uninstallation', async () => {
+    const { db, snapshots } = await tenant();
+    await upgradeModules({
+      db,
+      registry: registryOf(base([tagV1, partnerV1]), extraModule),
+      snapshots,
+      modules: [
+        { name: 'lc_base', version: '1.0.0', data: [tags({ red: 'Red' })] },
+        { name: 'lc_extra', version: '1.0.0', data: [tags({ vip: 'VIP' })] },
+      ],
+    });
+    expect(await tagNames(db)).toEqual(['Red', 'VIP']);
+    await uninstallModules({
+      db,
+      registry: v1,
+      modules: [extraModule],
+      snapshots,
+      exportData: () => Promise.resolve(),
+    });
+    expect(await tagNames(db)).toEqual(['Red']);
+    expect(
+      await rows(db, sql`select module, name from socle_external_id order by module, name`),
+    ).toEqual([{ module: 'lc_base', name: 'red' }]);
   });
 });

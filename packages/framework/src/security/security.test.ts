@@ -15,6 +15,7 @@ import {
   effectiveGroups,
   resolveRuleDomain,
   ruleDomainFor,
+  rulesOf,
 } from './permissions.js';
 import { buildSecurityPolicy, SecurityDefinitionError, type ModuleSecurity } from './policy.js';
 
@@ -294,5 +295,75 @@ describe('access control in the ORM', () => {
     // write (the request's transaction then rolls the change back).
     const mine = await alice.model('sec.invoice').create({ name: 'A3', companyId: first.id });
     await expect(mine.write({ companyId: second.id })).rejects.toThrow(AccessError);
+  });
+});
+
+describe('rules declared on a mixin', () => {
+  const scoped = defineModel({
+    name: 'mix.scoped',
+    abstract: true,
+    fields: { companyId: f.char() },
+  });
+  const tracked = defineModel({ name: 'mix.tracked', abstract: true, mixins: ['mix.scoped'] });
+  const order = defineModel({
+    name: 'mix.order',
+    mixins: ['mix.tracked'],
+    fields: { name: f.char() },
+  });
+  const note = defineModel({ name: 'mix.note', fields: { name: f.char() } });
+  const models = buildModelRegistry([{ module: 'mix', models: [scoped, tracked, order, note] }], {
+    side: 'server',
+  });
+  const mixPolicy = buildSecurityPolicy(
+    [
+      {
+        module: 'mix',
+        access: [
+          { model: 'mix.order', group: null, read: true },
+          { model: 'mix.note', group: null, read: true },
+        ],
+        rules: [
+          {
+            id: 'mix.company',
+            model: 'mix.scoped',
+            domain: [['companyId', 'in', { $user: 'companyIds' }]],
+          },
+        ],
+      },
+    ],
+    (model) => models.has(model),
+  );
+
+  it('lists the mixins of a model, including those of its mixins', () => {
+    expect(models.get('mix.order').mixins).toEqual(['mix.tracked', 'mix.scoped']);
+    expect(models.get('mix.note').mixins).toEqual([]);
+  });
+
+  it('apply to every model mixing them in, re-targeted to that model', () => {
+    const [rule] = rulesOf(mixPolicy, 'mix.order', models.get('mix.order').mixins);
+    expect(rule).toMatchObject({ id: 'mix.company', model: 'mix.order' });
+    expect(rulesOf(mixPolicy, 'mix.note', models.get('mix.note').mixins)).toEqual([]);
+  });
+
+  it('are enforced by the ORM access control', async () => {
+    const env = createEnvironment({
+      registry: models,
+      storage: createMemoryStorage(models),
+      user: user('u1', [], ['c1']),
+      access: createAccessControl(mixPolicy, models),
+      audit: { record: () => undefined },
+    });
+    await env
+      .sudo('test fixtures')
+      .model('mix.order')
+      .create([
+        { name: 'mine', companyId: 'c1' },
+        { name: 'other', companyId: 'c2' },
+      ]);
+    const visible = await env.model('mix.order').search([]);
+    await visible.prefetch(['name']);
+    expect([...visible].map((record) => (record as unknown as { name: string }).name)).toEqual([
+      'mine',
+    ]);
   });
 });

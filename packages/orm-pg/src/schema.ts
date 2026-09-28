@@ -40,6 +40,12 @@ export const AUTH_TABLES = {
 } as const;
 
 /**
+ * External ids of the records loaded from module data (`module.name` → record), so that an
+ * upgrade updates them instead of creating them again. Reserved name.
+ */
+export const EXTERNAL_ID_TABLE = 'socle_external_id';
+
+/**
  * Per-field versions of a record (JSON object field → version), the base of conflict
  * detection. A technical column of every model table, managed by the storage.
  */
@@ -256,6 +262,7 @@ export function buildSchema(registry: ModelRegistry): DatabaseSchema {
       MODULE_TABLE,
       ...Object.values(SYNC_TABLES),
       ...Object.values(AUTH_TABLES),
+      EXTERNAL_ID_TABLE,
     ].flatMap((reserved) => [
       [reserved, 'the ORM'],
       [`${reserved}_pkey`, 'the ORM'],

@@ -14,6 +14,8 @@ export type {
   DomainOperator,
   FieldResolver,
 } from './domain.js';
+export { defineData, isExternalId, isExternalRef, ref } from './data.js';
+export type { DataRecord, ExternalRef, ModuleData } from './data.js';
 export { f, isRelational, isStoredColumn } from './fields.js';
 export type {
   CharOptions,

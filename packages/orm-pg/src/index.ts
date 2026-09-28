@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 export { applySchema } from './apply.js';
 export type { ApplySchemaOptions } from './apply.js';
+export type { DataLoadResult } from './data.js';
 export { DomainCompiler, NotMirrorable, SessionValue } from './compile.js';
 export { createPgDatabase } from './database.js';
 export type { Executor, PgDatabaseOptions, Tables } from './database.js';
@@ -25,6 +26,7 @@ export {
   SCHEMA_TABLE,
   SYNC_TABLES,
   AUTH_TABLES,
+  EXTERNAL_ID_TABLE,
 } from './schema.js';
 export type {
   ColumnSchema,

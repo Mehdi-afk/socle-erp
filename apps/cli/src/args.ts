@@ -16,7 +16,13 @@ export type Command =
       readonly yes: boolean;
     }
   | {
-      readonly kind: 'module.install' | 'module.upgrade';
+      readonly kind: 'module.install';
+      readonly tenant: string;
+      readonly modules: readonly string[];
+      readonly demo: boolean;
+    }
+  | {
+      readonly kind: 'module.upgrade';
       readonly tenant: string;
       readonly modules: readonly string[];
     }
@@ -44,7 +50,9 @@ export const USAGE = `Usage: socle <command>
   db restore <tenant> <snapshot> --yes   Replace the tenant database with a snapshot
 
   module list <tenant>                   Available and installed modules
-  module install <tenant> <module...>    Install modules and their dependencies
+  module install <tenant> <module...> [--demo]
+                                         Install modules and their dependencies
+                                         (--demo: also their demonstration data)
   module upgrade <tenant> [module...]    Upgrade modules (default: all installed)
   module uninstall <tenant> <module...> --yes [--export-dir <dir>]
                                          Uninstall modules and their dependents,
@@ -58,7 +66,7 @@ Environment:
 
 Options: --debug prints the full error.`;
 
-type Option = 'yes' | 'export-dir' | 'dir';
+type Option = 'yes' | 'export-dir' | 'dir' | 'demo';
 
 /** Options each command accepts, besides --help and --debug. */
 const ACCEPTS: Record<string, readonly Option[]> = {
@@ -67,7 +75,7 @@ const ACCEPTS: Record<string, readonly Option[]> = {
   'db.backup': [],
   'db.restore': ['yes'],
   'module.list': [],
-  'module.install': [],
+  'module.install': ['demo'],
   'module.upgrade': [],
   'module.uninstall': ['yes', 'export-dir'],
   'scaffold.module': ['dir'],
@@ -89,6 +97,7 @@ export function parseCommand(argv: readonly string[]): ParsedArgs {
         yes: { type: 'boolean' },
         'export-dir': { type: 'string' },
         dir: { type: 'string' },
+        demo: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         debug: { type: 'boolean' },
       },
@@ -105,7 +114,7 @@ export function parseCommand(argv: readonly string[]): ParsedArgs {
   const kind = `${group}.${action ?? ''}`;
   const accepted = ACCEPTS[kind];
   if (accepted === undefined) throw new UsageError(`Unknown command "${positionals.join(' ')}".`);
-  for (const option of ['yes', 'export-dir', 'dir'] as const) {
+  for (const option of ['yes', 'export-dir', 'dir', 'demo'] as const) {
     if (values[option] !== undefined && !accepted.includes(option)) {
       throw new UsageError(`Option --${option} does not apply to "${group} ${action ?? ''}".`);
     }
@@ -139,7 +148,10 @@ export function parseCommand(argv: readonly string[]): ParsedArgs {
     case 'module.uninstall':
       if (others.length === 0) throw new UsageError(`"${group} ${action ?? ''}" needs modules.`);
       return kind === 'module.install'
-        ? { command: { kind, tenant: tenant(), modules: others }, debug }
+        ? {
+            command: { kind, tenant: tenant(), modules: others, demo: values.demo === true },
+            debug,
+          }
         : {
             command: {
               kind,

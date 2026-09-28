@@ -6,7 +6,12 @@
 import { parseDomain, type Domain, type DomainNode, type FieldResolver } from '../orm/domain.js';
 import type { Operation, UserContext } from '../orm/environment.js';
 import type { FieldDefinition } from '../orm/fields.js';
-import { isUserValue, type RuleDomain, type SecurityPolicy } from './policy.js';
+import {
+  isUserValue,
+  type RuleDefinition,
+  type RuleDomain,
+  type SecurityPolicy,
+} from './policy.js';
 
 /**
  * The user's groups plus every group they imply, transitively (cycles are harmless).
@@ -78,9 +83,29 @@ function combine(kind: 'and' | 'or', nodes: readonly DomainNode[]): DomainNode {
 }
 
 /**
+ * The record rules of a model: its own, plus those declared on the abstract models it mixes
+ * in (`mixins`, from its {@link ModelMeta}), re-targeted to the model — a rule written once on
+ * `company.scoped` applies to every company-scoped model. The ORM and the row-level security
+ * both go through this function, so they always apply the same rules.
+ * @public
+ */
+export function rulesOf(
+  policy: SecurityPolicy,
+  model: string,
+  mixins: readonly string[] = [],
+): readonly RuleDefinition[] {
+  return [
+    ...(policy.rules.get(model) ?? []),
+    ...mixins.flatMap((mixin) =>
+      (policy.rules.get(mixin) ?? []).map((rule) => ({ ...rule, model })),
+    ),
+  ];
+}
+
+/**
  * The record-rule domain of an operation for a user, Odoo semantics: every global rule
  * (AND) and, when some group rules concern the user, at least one of them (OR).
- * `{ kind: 'true' }` when no rule applies.
+ * `{ kind: 'true' }` when no rule applies. `mixins`: see {@link rulesOf}.
  * @public
  */
 export function ruleDomainFor(
@@ -90,8 +115,9 @@ export function ruleDomainFor(
   model: string,
   operation: Operation,
   resolve: FieldResolver,
+  mixins: readonly string[] = [],
 ): DomainNode {
-  const rules = (policy.rules.get(model) ?? []).filter((rule) =>
+  const rules = rulesOf(policy, model, mixins).filter((rule) =>
     (rule.operations ?? ['read', 'create', 'write', 'unlink']).includes(operation),
   );
   const parse = (domain: RuleDomain): DomainNode =>

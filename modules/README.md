@@ -22,6 +22,8 @@ Chaque fichier exporte **par défaut** ce que son emplacement contient :
 | `views/*.ts` | une vue (`defineView`) ou une extension (`extendView`), ou un tableau de celles-ci |
 | `security/groups.ts`, `access.ts`, `rules.ts` | un tableau de groupes, de droits d'accès ou de règles d'enregistrement |
 | `migrations/<version>/pre.ts`, `post.ts` | une fonction `async (context) => {}` (`MigrationContext` de `@socle/orm-pg`) |
+| `data/*.ts` | `defineData(modèle, enregistrements)` ou un tableau de ceux-ci : chargés à l'installation, mis à jour à chaque mise à jour du module (sauf `{ noupdate: true }`) ; références par `ref('module.id')` |
+| `demo/*.ts` | même format, chargé **uniquement** avec `socle module install <client> <module> --demo` |
 
 Règles de chargement :
 
@@ -36,3 +38,11 @@ node apps/cli/bin/socle.mjs db create acme
 node apps/cli/bin/socle.mjs module install acme mon_module
 node apps/cli/bin/socle.mjs help
 ```
+
+## Données de module
+
+Chaque enregistrement porte un identifiant local (`fr`), qui devient un identifiant externe stable (`base.fr`). À l'installation, l'enregistrement est créé. À chaque mise à jour, il est remis à jour, ou recréé s'il a été supprimé ; les enregistrements `noupdate` sont laissés tels que l'administrateur les a modifiés. À la désinstallation, les enregistrements qu'un module a ajoutés aux modèles d'autres modules sont supprimés.
+
+## Règles d'enregistrement sur un mixin
+
+Une règle déclarée sur un modèle abstrait (par exemple la règle « société autorisée » sur `company.scoped`) s'applique à **tous** les modèles qui l'utilisent comme mixin : même règle dans l'ORM et dans la sécurité au niveau des lignes de PostgreSQL.

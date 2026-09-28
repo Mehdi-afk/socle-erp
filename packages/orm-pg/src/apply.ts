@@ -21,6 +21,7 @@ import {
   SCHEMA_TABLE,
   SYNC_TABLES,
   AUTH_TABLES,
+  EXTERNAL_ID_TABLE,
   type ColumnSchema,
   type DatabaseSchema,
   type SchemaOperation,
@@ -178,6 +179,9 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   );
   // Only a hash of the session token is stored: a database leak does not leak sessions.
   await sql`create table if not exists ${sql.table(a.session)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), expires_at timestamptz not null, revoked boolean not null default false)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(EXTERNAL_ID_TABLE)} (module text not null, name text not null, model text not null, record_id uuid not null, noupdate boolean not null default false, primary key (module, name))`.execute(
     trx,
   );
 }

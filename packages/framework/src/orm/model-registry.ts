@@ -46,6 +46,11 @@ export interface ModelMeta {
   readonly delegations: ReadonlyMap<string, string>;
   /** Fields exposed through delegation: field → many2one field holding the parent. */
   readonly delegatedFields: ReadonlyMap<string, string>;
+  /**
+   * Every abstract model mixed in, directly or through a parent or another mixin
+   * (e.g. `company.scoped`): record rules declared on them apply to this model.
+   */
+  readonly mixins: readonly string[];
   readonly offline: { readonly conflict: ConflictPolicy; readonly syncable: boolean };
   /** Modules that define or extend the model, in load order. */
   readonly modules: readonly string[];
@@ -213,9 +218,13 @@ function buildOne(draft: Draft, parent: (name: string) => Built, side: RuntimeSi
   const constraints: ModelConstraint[] = [];
   const unique: UniqueConstraint[] = [];
   const modules = [module];
+  const mixins: string[] = [];
 
   const absorb = (parentName: string): void => {
     const p = parent(parentName);
+    for (const mixin of [...(p.meta.abstract ? [parentName] : []), ...p.meta.mixins]) {
+      if (!mixins.includes(mixin)) mixins.push(mixin);
+    }
     for (const [fieldName, entry] of p.ownFields)
       mergeField(name, fields, fieldName, entry.definition, entry.module);
     for (const factory of p.factories) if (!factories.includes(factory)) factories.push(factory);
@@ -338,6 +347,7 @@ function buildOne(draft: Draft, parent: (name: string) => Built, side: RuntimeSi
     unique: Object.freeze([...unique]),
     delegations,
     delegatedFields,
+    mixins: Object.freeze(mixins),
     offline: Object.freeze({
       conflict: definition.offline?.conflict ?? 'field-lww',
       syncable: definition.offline?.syncable ?? true,

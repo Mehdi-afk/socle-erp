@@ -14,6 +14,7 @@ import {
   effectiveGroups,
   isUserValue,
   parseDomain,
+  rulesOf,
   type DomainNode,
   type ModelRegistry,
   type Operation,
@@ -129,10 +130,15 @@ export function buildRowSecurity(
   const su = sql<SqlBool>`${setting('app.su')} = 'on'`;
   const userSet = sql<SqlBool>`${setting('app.user_id')} <> ''`;
 
-  for (const [model, rules] of [...security.rules].sort(([a], [b]) => (a < b ? -1 : 1))) {
+  for (const model of security.rules.keys()) {
     if (!registry.has(model)) throw new SchemaError(`Rules on unknown model "${model}".`);
+  }
+  // Every concrete model with rules of its own or from its mixins (same rules as the ORM).
+  for (const model of registry.names()) {
     const meta = registry.get(model);
-    if (meta.abstract || rules.length === 0) continue;
+    if (meta.abstract) continue;
+    const rules = rulesOf(security, model, meta.mixins);
+    if (rules.length === 0) continue;
     const table = identifier(meta.table);
     tables.push(table);
 

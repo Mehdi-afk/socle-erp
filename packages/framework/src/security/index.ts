@@ -6,6 +6,7 @@ export {
   effectiveGroups,
   resolveRuleDomain,
   ruleDomainFor,
+  rulesOf,
 } from './permissions.js';
 export { buildSecurityPolicy, isUserValue, SecurityDefinitionError } from './policy.js';
 export type {
