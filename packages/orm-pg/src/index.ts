@@ -24,6 +24,7 @@ export {
   relationTable,
   SCHEMA_TABLE,
   SYNC_TABLES,
+  AUTH_TABLES,
 } from './schema.js';
 export type {
   ColumnSchema,

@@ -18,8 +18,8 @@ import {
   type UserContext,
 } from '@socle/framework';
 import {
-  pullChanges,
-  pushMutations,
+  pullChanges as pullAll,
+  pushMutations as pushAll,
   rightsFingerprint,
   signMutation,
   type Mutation,
@@ -38,6 +38,14 @@ import { useTestDatabases } from './test-support.js';
 
 const C1 = '0190a000-0000-7000-8000-0000000000c1';
 const C2 = '0190a000-0000-7000-8000-0000000000c2';
+
+// These models have no field restricted to groups: every field is visible here (field-level
+// visibility is tested through the HTTP server).
+const everyField = { canSeeField: () => true };
+const pushMutations = (options: Omit<Parameters<typeof pushAll>[0], 'canSeeField'>) =>
+  pushAll({ ...options, ...everyField });
+const pullChanges = (options: Omit<Parameters<typeof pullAll>[0], 'canSeeField'>) =>
+  pullAll({ ...options, ...everyField });
 
 const note = defineModel({
   name: 'syn.note',

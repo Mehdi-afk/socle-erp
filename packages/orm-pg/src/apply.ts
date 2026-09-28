@@ -20,6 +20,7 @@ import {
   diffSchema,
   SCHEMA_TABLE,
   SYNC_TABLES,
+  AUTH_TABLES,
   type ColumnSchema,
   type DatabaseSchema,
   type SchemaOperation,
@@ -169,6 +170,14 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
     trx,
   );
   await sql`create table if not exists ${sql.table(t.archive)} (id bigint generated always as identity primary key, model text not null, record_id uuid not null, side text not null check (side in ('local', 'remote')), mutation_id uuid not null, device_id text not null, user_id text not null, reason text not null, "values" jsonb not null, archived_at timestamptz not null default now())`.execute(
+    trx,
+  );
+  const a = AUTH_TABLES;
+  await sql`create table if not exists ${sql.table(a.user)} (id text primary key, login text not null unique, password_hash text not null, group_ids text[] not null default '{}', company_ids text[] not null default '{}', company_id text, lang text not null default 'fr', tz text not null default 'UTC', active boolean not null default true, failed_attempts integer not null default 0, locked_until timestamptz)`.execute(
+    trx,
+  );
+  // Only a hash of the session token is stored: a database leak does not leak sessions.
+  await sql`create table if not exists ${sql.table(a.session)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), expires_at timestamptz not null, revoked boolean not null default false)`.execute(
     trx,
   );
 }

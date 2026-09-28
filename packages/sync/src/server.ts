@@ -164,7 +164,10 @@ export async function pushMutations(options: {
   readonly userId: string;
   readonly deviceId: string;
   readonly mutations: readonly unknown[];
+  /** Field-level visibility of the user (`groups` on fields): hidden fields cannot be written. */
+  readonly canSeeField: (definition: FieldDefinition) => boolean;
 }): Promise<PushResult[]> {
+  const canSee = options.canSeeField;
   const results: PushResult[] = [];
   for (const raw of options.mutations) {
     let mutation: Mutation;
@@ -180,7 +183,9 @@ export async function pushMutations(options: {
     }
     try {
       results.push(
-        await options.run((context) => replay(context, options.userId, options.deviceId, mutation)),
+        await options.run((context) =>
+          replay(context, options.userId, options.deviceId, mutation, canSee),
+        ),
       );
     } catch (error) {
       // A refusal inside the transaction rolled it back; record it in a transaction of its own.
@@ -214,6 +219,7 @@ async function replay(
   userId: string,
   deviceId: string,
   mutation: Mutation,
+  canSee: (definition: FieldDefinition) => boolean,
 ): Promise<PushResult> {
   const done = await backend.processed(mutation.mutationId);
   if (done) return { ...done, status: 'duplicate' };
@@ -255,7 +261,8 @@ async function replay(
 
   const changes = mutation.changes ?? {};
   for (const field of Object.keys(changes)) {
-    if (!writable(meta.fields.get(field)))
+    const definition = meta.fields.get(field);
+    if (!writable(definition) || !canSee(definition as FieldDefinition))
       throw new ValidationError(`"${meta.name}.${field}" cannot be changed from a device.`);
   }
   const remote = await backend.remote(meta, mutation.recordId);
@@ -326,7 +333,10 @@ export async function pullChanges(options: {
   readonly limit: number;
   readonly rights: string;
   readonly deviceRights: string | null;
+  /** Field-level visibility of the user (`groups` on fields): hidden fields are never sent. */
+  readonly canSeeField: (definition: FieldDefinition) => boolean;
 }): Promise<PullResponse & { readonly rights: string }> {
+  const canSee = options.canSeeField;
   if (options.deviceRights !== null && options.deviceRights !== options.rights) {
     return {
       cursor: 0,
@@ -369,7 +379,9 @@ export async function pullChanges(options: {
       const seen = new Set(visible);
       for (const id of changed) if (!seen.has(id)) evictions.push({ model: meta.name, id });
       if (visible.length === 0) continue;
-      const fields = syncableFields(meta);
+      const fields = syncableFields(meta).filter((name) =>
+        canSee(meta.fields.get(name) as FieldDefinition),
+      );
       const rows = await env
         .model(meta.name)
         .browse(visible)
