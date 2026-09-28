@@ -1,4 +1,4 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-
-/** Placeholder until phase 1. */
-export const PACKAGE_NAME = '@socle/framework';
+export { SocleError } from './errors.js';
+export * from './registry/index.js';
+export { SOCLE_VERSION } from './version.js';
