@@ -214,6 +214,7 @@ export async function createTenant(pgUrl: string): Promise<Tenant> {
             user: { ...ALICE, deviceId: id },
             access,
             audit: { record: () => undefined },
+            queueServerCall: (call) => engine.queueServerCall(call),
           }),
         replica: () => readAll(replica, clientRegistry),
       };

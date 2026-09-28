@@ -254,6 +254,31 @@ describe('device engine', () => {
     expect(Object.keys(device.state().server)).toEqual([recordKey('t.item', id(1))]);
   });
 
+  it('queues server methods called offline as signed intents, one per record', async () => {
+    const server = scriptedServer(() => applied());
+    const { keys, device } = await setup(server);
+    expect(
+      await device.queueServerCall({
+        model: 't.item',
+        method: 'actionConfirm',
+        ids: [id(1), id(2)],
+        args: [{ note: 'rush' }, 3],
+      }),
+    ).toEqual({ queued: 2 });
+    const pending = device.state().outbox.pending;
+    expect(pending.map((m) => [m.op, m.recordId, m.method, m.args])).toEqual([
+      ['call', id(1), 'actionConfirm', [{ note: 'rush' }, 3]],
+      ['call', id(2), 'actionConfirm', [{ note: 'rush' }, 3]],
+    ]);
+    for (const mutation of pending)
+      expect(await verifyMutation(keys.publicKey, mutation)).toBe(true);
+    await expect(
+      device.queueServerCall({ model: 't.item', method: 'x', ids: [id(1)], args: [new Date()] }),
+    ).rejects.toThrow(/cannot be synchronised/);
+    expect(await device.sync()).toMatchObject({ pushed: 2, rejected: [] });
+    expect(device.state().outbox.pending).toEqual([]);
+  });
+
   it('drops what the server no longer sends after a reset of the rights', async () => {
     const server = scriptedServer(() => undefined);
     const { device, local } = await setup(server);
