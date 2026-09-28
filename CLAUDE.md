@@ -40,6 +40,7 @@ pnpm install --frozen-lockfile  # installation reproductible
 pnpm typecheck                  # tsc --noEmit, mode strict
 pnpm lint                       # ESLint (+ règles sécurité)
 pnpm test                       # Vitest
+pnpm api:update                 # regenerate api/*.api.md after an intended public API change
 pnpm format                     # Prettier
 git switch -c feat/<sujet>      # nouvelle branche de travail
 gh pr create --fill             # ouvrir la PR

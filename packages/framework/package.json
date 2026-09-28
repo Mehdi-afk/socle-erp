@@ -10,7 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "api:check": "tsc -p tsconfig.api.json && api-extractor run",
+    "api:update": "tsc -p tsconfig.api.json && api-extractor run --local"
   },
   "dependencies": {
     "semver": "^7.8.5",

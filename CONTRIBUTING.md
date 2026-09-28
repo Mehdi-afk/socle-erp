@@ -25,6 +25,7 @@ Toute contribution externe exige la signature du [CLA](CLA.md). Le contrôle `cl
 - **Commits** : [Conventional Commits](https://www.conventionalcommits.org/) en anglais (`feat(orm): add many2many field`).
 - **Pull requests** : une PR par lot cohérent, fusion en *squash*, checklist sécurité du modèle de PR remplie.
 - **Tests** : `pnpm typecheck && pnpm lint && pnpm test` doivent passer. Chaque règle métier est une fonction pure testée ; chaque bug corrigé reçoit un test de non-régression.
+- **API publique** : tout symbole exporté par un paquet `@socle/*` porte `@public` ; après un changement volontaire de l'API, lancez `pnpm api:update` et commitez le rapport `api/*.api.md` (la CI échoue sinon).
 - **En-tête SPDX** en première ligne de chaque fichier source : `// SPDX-License-Identifier: LGPL-3.0-only`.
 - **Dépendances** : justifiez tout ajout (besoin, licence, maintenance, alternatives). Licences admises : MIT, BSD, ISC, Apache-2.0, MPL-2.0, LGPL. **Interdites** : GPL, AGPL et licences « source-available ».
 - **Langue** : code, identifiants et commits en anglais ; documentation utilisateur en français (puis EN/AR).

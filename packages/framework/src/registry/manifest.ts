@@ -94,25 +94,83 @@ const manifestSchema = z
  * and enforced at runtime (ARCHITECTURE.md §11 bis).
  * @public
  */
-export type Capability = z.output<typeof capability>;
+export type Capability = 'sudo' | 'cron' | 'files' | { readonly network: readonly string[] };
 
 /**
- * What a module author writes in `manifest.ts`.
+ * A text translated into the supported languages; French is mandatory.
  * @public
  */
-export type ManifestInput = z.input<typeof manifestSchema>;
+export interface LocalizedText {
+  readonly fr: string;
+  readonly en?: string | undefined;
+  readonly ar?: string | undefined;
+}
 
 /**
- * A validated, normalized and frozen module manifest.
+ * Module edition: community modules are LGPL, pro modules are proprietary.
  * @public
  */
-export type ModuleManifest = DeepReadonly<z.output<typeof manifestSchema>>;
+export type ModuleEdition = 'community' | 'pro';
 
-type DeepReadonly<T> = T extends (infer U)[]
-  ? readonly DeepReadonly<U>[]
-  : T extends object
-    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-    : T;
+/**
+ * What a module author writes in `manifest.ts`. Omitted optional fields get their default.
+ * @public
+ */
+export interface ManifestInput {
+  /** Technical name, lowercase snake_case; must equal the module directory name. */
+  readonly name: string;
+  /** SemVer version of the module. */
+  readonly version: string;
+  readonly label: LocalizedText;
+  readonly category?: string | undefined;
+  /** Modules this one depends on. Default: none. */
+  readonly depends?: readonly string[] | undefined;
+  /** SPDX identifier (e.g. `LGPL-3.0-only`) or `LicenseRef-*`. */
+  readonly license: string;
+  readonly edition: ModuleEdition;
+  /** Shown in the application switcher. Default: `false`. */
+  readonly application?: boolean | undefined;
+  /** Installed automatically once all dependencies are installed ("bridge" module). Default: `false`. */
+  readonly autoInstall?: boolean | undefined;
+  /** Whether its models are synchronised offline by default. Default: `{ syncable: true }`. */
+  readonly offline?: { readonly syncable: boolean } | undefined;
+  /** Supported core versions, as a SemVer range (e.g. `^1.2`). */
+  readonly engines: { readonly socle: string };
+  /** Runtime capabilities. Default: none. */
+  readonly capabilities?: readonly Capability[] | undefined;
+}
+
+/**
+ * A validated, normalized and deeply frozen module manifest.
+ * @public
+ */
+export interface ModuleManifest {
+  readonly name: string;
+  readonly version: string;
+  readonly label: LocalizedText;
+  readonly category?: string | undefined;
+  readonly depends: readonly string[];
+  readonly license: string;
+  readonly edition: ModuleEdition;
+  readonly application: boolean;
+  readonly autoInstall: boolean;
+  readonly offline: { readonly syncable: boolean };
+  readonly engines: { readonly socle: string };
+  readonly capabilities: readonly Capability[];
+}
+
+// Compile-time guarantee that the public types and the validation schema stay in sync.
+type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
+export type _ManifestOutputMatches = Assert<
+  z.output<typeof manifestSchema> extends ModuleManifest ? true : false
+>;
+export type _ManifestInputMatches = Assert<
+  Equals<keyof z.input<typeof manifestSchema>, keyof ManifestInput>
+>;
+export type _CapabilityMatches = Assert<
+  z.output<typeof capability> extends Capability ? true : false
+>;
 
 function deepFreeze<T>(value: T): T {
   if (typeof value === 'object' && value !== null) {
