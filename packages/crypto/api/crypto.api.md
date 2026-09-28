@@ -77,6 +77,12 @@ export function toBase64Url(bytes: Uint8Array): string;
 export function utf8(text: string): Uint8Array;
 
 // @public
+export function uuidv7(now?: number): string;
+
+// @public
+export function uuidv7Timestamp(id: string): number;
+
+// @public
 export function verify(key: SigningPublicKey, signature: string, data: Uint8Array): Promise<boolean>;
 
 // (No @packageDocumentation comment for this package)
