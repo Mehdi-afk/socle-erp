@@ -142,7 +142,11 @@ const SETTINGS = {
  * security policies (`app.user_id`, `app.company_id`, `app.company_ids`, `app.group_ids`).
  */
 export class SessionValue {
-  constructor(readonly key: keyof typeof SETTINGS) {}
+  readonly key: keyof typeof SETTINGS;
+
+  constructor(key: keyof typeof SETTINGS) {
+    this.key = key;
+  }
 
   get list(): boolean {
     return this.key === 'companyIds' || this.key === 'groupIds';
@@ -339,6 +343,8 @@ function scalar(
 export class DomainCompiler {
   private counter = 0;
   private readonly bind: Bind;
+  private readonly registry: ModelRegistry;
+  private readonly mode: 'query' | 'policy';
 
   /**
    * `policy`: compile for a row-level security policy — values become literals, `$user`
@@ -346,10 +352,9 @@ export class DomainCompiler {
    * refused ({@link NotMirrorable}: a policy querying other tables could recurse through
    * their own policies).
    */
-  constructor(
-    private readonly registry: ModelRegistry,
-    private readonly mode: 'query' | 'policy' = 'query',
-  ) {
+  constructor(registry: ModelRegistry, mode: 'query' | 'policy' = 'query') {
+    this.registry = registry;
+    this.mode = mode;
     this.bind = mode === 'policy' ? literal : parameter;
   }
 

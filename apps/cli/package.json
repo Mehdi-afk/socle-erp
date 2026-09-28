@@ -5,6 +5,9 @@
   "description": "socle CLI: db, module, scaffold",
   "license": "LGPL-3.0-only",
   "type": "module",
+  "bin": {
+    "socle": "./bin/socle.mjs"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
@@ -13,6 +16,15 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^24.13.6"
+    "@socle/testing": "workspace:*",
+    "@types/node": "^24.13.6",
+    "@types/semver": "^7.8.0"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*",
+    "@socle/orm-pg": "workspace:*",
+    "kysely": "^0.29.6",
+    "semver": "^7.8.5",
+    "zod": "^4.6.5"
   }
 }
