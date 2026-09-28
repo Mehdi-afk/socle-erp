@@ -6,3 +6,4 @@ export * from './registry/index.js';
 export * from './security/index.js';
 export * from './trust/index.js';
 export { SOCLE_VERSION } from './version.js';
+export * from './views/index.js';

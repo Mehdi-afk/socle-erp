@@ -38,6 +38,9 @@ export class AccessError extends SocleError {
 export function andNodes(...nodes: DomainNode[]): DomainNode;
 
 // @public
+export function applyViewChanges(arch: ViewNode, changes: readonly ViewChange[], context: string): ViewNode;
+
+// @public
 export interface AuditEvent {
     // (undocumented)
     readonly at: string;
@@ -62,6 +65,15 @@ export function buildModelRegistry(modules: readonly ModuleModels[], options: {
 
 // @public
 export function buildSecurityPolicy(modules: readonly ModuleSecurity[], hasModel: (model: string) => boolean): SecurityPolicy;
+
+// @public
+export function buildViewRegistry(modules: readonly ModuleViews[], models: ModelRegistry): ViewRegistry;
+
+// @public
+export function button(method: string, attrs?: CommonNodeAttributes & {
+    readonly states?: readonly string[];
+    readonly primary?: boolean;
+}): ViewNode;
 
 // @public
 export function canAccessModel(policy: SecurityPolicy, groups: ReadonlySet<string>, model: string, operation: Operation): boolean;
@@ -137,7 +149,38 @@ export interface CommonFieldOptions {
 }
 
 // @public
+export interface CommonNodeAttributes {
+    // (undocumented)
+    readonly [key: string]: ViewAttribute | undefined;
+    readonly groups?: readonly string[];
+    // (undocumented)
+    readonly label?: LocalizedText;
+    readonly name?: string;
+}
+
+// @public (undocumented)
+export interface ComposedView {
+    // (undocumented)
+    readonly arch: ViewNode;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly model: string;
+    readonly modules: readonly string[];
+    // (undocumented)
+    readonly priority: number;
+    // (undocumented)
+    readonly type: ViewType;
+}
+
+// @public
 export type ConflictPolicy = 'field-lww' | 'server-wins' | 'append-only' | 'manual';
+
+// @public
+export type ContainerBuilder = {
+    (children: readonly ViewNode[]): ViewNode;
+    (attrs: CommonNodeAttributes, children: readonly ViewNode[]): ViewNode;
+};
 
 // @public
 export function countersignPackage(pkg: SignedModulePackage, marketplace: {
@@ -188,6 +231,15 @@ export function defineManifest(input: ManifestInput): ModuleManifest;
 
 // @public
 export function defineModel<const N extends string, const F extends FieldDefinitions = Record<never, never>>(input: TypedModelInput<N, F>): TypedModelDefinition<N, F>;
+
+// @public
+export function defineView(input: {
+    readonly id: string;
+    readonly model: string;
+    readonly type: ViewType;
+    readonly arch: ViewNode;
+    readonly priority?: number | undefined;
+}): ViewDefinition;
 
 // @public (undocumented)
 export class DependencyCycleError extends SocleError {
@@ -285,6 +337,9 @@ export interface EnvironmentOptions {
 export function extendModel<const N extends string, const F extends FieldDefinitions = Record<never, never>>(name: N, input: TypedExtensionInput<N, F>): ModelExtension;
 
 // @public
+export function extendView(view: string, changes: readonly ViewChange[]): ViewExtension;
+
+// @public
 export type ExtensionClass<N extends string, F> = new (env: Environment, ids: readonly string[]) => RecordsetOf<N> & FieldValues<F>;
 
 // @public
@@ -332,6 +387,9 @@ export interface FetchResponseLike {
     // (undocumented)
     readonly status: number;
 }
+
+// @public
+export function field(name: string, attrs?: CommonNodeAttributes): ViewNode;
 
 // @public
 export interface FieldDefinition extends CommonFieldOptions {
@@ -395,7 +453,16 @@ export type FieldValues<F> = {
 };
 
 // @public
+export function filter(name: string, attrs?: CommonNodeAttributes): ViewNode;
+
+// @public
 export function findRevocation(list: RevocationList, subject: RevocationSubject): RevocationEntry | undefined;
+
+// @public (undocumented)
+export const form: ContainerBuilder;
+
+// @public (undocumented)
+export const group: ContainerBuilder;
 
 // @public
 export interface GroupDefinition {
@@ -405,6 +472,9 @@ export interface GroupDefinition {
     // (undocumented)
     readonly name: LocalizedText;
 }
+
+// @public (undocumented)
+export const header: ContainerBuilder;
 
 // @public
 export interface HttpClient {
@@ -477,6 +547,12 @@ export function isStoredColumn(definition: FieldDefinition): boolean;
 
 // @public
 export function isUserValue(value: unknown): value is UserValue;
+
+// @public (undocumented)
+export const kanban: ContainerBuilder;
+
+// @public (undocumented)
+export const list: ContainerBuilder;
 
 // @public
 export interface LocalizedText {
@@ -763,6 +839,14 @@ export interface ModuleSecurity {
 // @public
 export function modulesToDisable(list: RevocationList, installed: Iterable<RevocationSubject>): string[];
 
+// @public
+export interface ModuleViews {
+    // (undocumented)
+    readonly module: string;
+    // (undocumented)
+    readonly views: readonly (ViewDefinition | ViewExtension)[];
+}
+
 // @public (undocumented)
 export interface MonetaryOptions extends CommonFieldOptions {
     // (undocumented)
@@ -773,7 +857,13 @@ export interface MonetaryOptions extends CommonFieldOptions {
 export type Money = number;
 
 // @public
+export function node(type: string, attrs?: CommonNodeAttributes, children?: readonly ViewNode[]): ViewNode;
+
+// @public
 export function normalizeValue(name: string, definition: FieldDefinition, value: unknown): unknown;
+
+// @public (undocumented)
+export const notebook: ContainerBuilder;
 
 // @public
 export type Operation = 'read' | 'create' | 'write' | 'unlink';
@@ -824,6 +914,9 @@ export interface PackageSource {
 }
 
 // @public
+export function page(name: string, label: LocalizedText | string, children: readonly ViewNode[]): ViewNode;
+
+// @public
 export function parseDomain(domain: Domain, model: string, resolve: FieldResolver): DomainNode;
 
 // @public
@@ -831,6 +924,9 @@ export function parseManifest(value: unknown): ModuleManifest;
 
 // @public
 export function parseOrder(model: string, order: string, fields: ReadonlyMap<string, FieldDefinition>): OrderTerm[];
+
+// @public
+export function parseSelector(selector: string): SelectorStep[];
 
 // @public
 export type RecordClass<N extends string, F> = new (env: Environment, ids: readonly string[]) => Recordset & FieldValues<F> & ExtensionFieldsOf<N>;
@@ -971,6 +1067,9 @@ export function ruleDomainFor(policy: SecurityPolicy, user: UserContext, groups:
 export type RuntimeSide = 'server' | 'client';
 
 // @public (undocumented)
+export const search: ContainerBuilder;
+
+// @public (undocumented)
 export interface SearchOptions {
     // (undocumented)
     readonly limit?: number | undefined;
@@ -1008,6 +1107,13 @@ export interface SelectionField<K extends string> extends TypedField<'selection'
     readonly selection: readonly (readonly [K, string])[];
 }
 
+// @public (undocumented)
+export interface SelectorStep {
+    readonly attributes: readonly (readonly [string, string])[];
+    readonly combinator: 'descendant' | 'child';
+    readonly type: string;
+}
+
 // @public
 export interface ServerCall {
     // (undocumented)
@@ -1024,6 +1130,9 @@ export interface ServerCall {
 export class ServerOnlyError extends SocleError {
     constructor(message: string);
 }
+
+// @public (undocumented)
+export const sheet: ContainerBuilder;
 
 // @public
 export class SignatureError extends SocleError {
@@ -1237,6 +1346,82 @@ export interface VerifyPackageOptions {
 export function verifyRevocationList(value: unknown, trustStore: TrustStore, options?: {
     readonly lastAcceptedSequence?: number | undefined;
 }): Promise<RevocationList>;
+
+// @public
+export type ViewAttribute = string | number | boolean | null | readonly string[] | LocalizedText | {
+    readonly [key: string]: ViewAttribute;
+} | readonly ViewAttribute[];
+
+// @public (undocumented)
+export type ViewAttributes = Readonly<Record<string, ViewAttribute>>;
+
+// @public (undocumented)
+export interface ViewChange {
+    readonly at: string;
+    readonly attributes?: Readonly<Record<string, ViewAttribute>> | undefined;
+    readonly node?: ViewNode | undefined;
+    // (undocumented)
+    readonly nodes?: readonly ViewNode[] | undefined;
+    // (undocumented)
+    readonly position: ViewPosition;
+}
+
+// @public (undocumented)
+export interface ViewDefinition {
+    // (undocumented)
+    readonly arch: ViewNode;
+    readonly id: string;
+    // (undocumented)
+    readonly kind: 'define';
+    // (undocumented)
+    readonly model: string;
+    readonly priority: number;
+    // (undocumented)
+    readonly type: ViewType;
+}
+
+// @public
+export class ViewError extends SocleError {
+    constructor(message: string);
+}
+
+// @public (undocumented)
+export interface ViewExtension {
+    // (undocumented)
+    readonly changes: readonly ViewChange[];
+    // (undocumented)
+    readonly kind: 'extend';
+    // (undocumented)
+    readonly view: string;
+}
+
+// @public
+export interface ViewNode {
+    // (undocumented)
+    readonly attrs: ViewAttributes;
+    // (undocumented)
+    readonly children: readonly ViewNode[];
+    // (undocumented)
+    readonly type: string;
+}
+
+// @public
+export type ViewPosition = 'before' | 'after' | 'inside' | 'replace' | 'attributes';
+
+// @public (undocumented)
+export interface ViewRegistry {
+    default(model: string, type: ViewType): ComposedView | undefined;
+    // (undocumented)
+    get(id: string): ComposedView;
+    // (undocumented)
+    ids(): readonly string[];
+}
+
+// @public
+export type ViewType = 'form' | 'list' | 'kanban' | 'calendar' | 'pivot' | 'graph' | 'search' | 'gantt' | 'map';
+
+// @public
+export function visibleArch(view: ComposedView, groups: ReadonlySet<string>, models: ModelRegistry): ViewNode;
 
 // (No @packageDocumentation comment for this package)
 
