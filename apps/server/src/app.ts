@@ -24,6 +24,7 @@ import {
   createPgSyncBackend,
   deviceStatus,
   registerDevice,
+  translateCommitError,
 } from '@socle/orm-pg';
 import { pullChanges, pushMutations, rightsFingerprint, type RunInTransaction } from '@socle/sync';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -242,23 +243,28 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   const runner =
     (tenant: TenantRuntime, user: UserContext, request: FastifyRequest): RunInTransaction =>
     (work) =>
-      tenant.db.transaction().execute(async (trx) => {
-        const pg = createPgSession(trx);
-        const env = createEnvironment({
-          registry: tenant.registry,
-          storage: createPgStorage(trx, tenant.registry, pg),
-          user,
-          access: tenant.access,
-          audit: {
-            record: (event) => {
-              request.log.info({ audit: event }, 'sudo');
+      tenant.db
+        .transaction()
+        .execute(async (trx) => {
+          const pg = createPgSession(trx);
+          const env = createEnvironment({
+            registry: tenant.registry,
+            storage: createPgStorage(trx, tenant.registry, pg),
+            user,
+            access: tenant.access,
+            audit: {
+              record: (event) => {
+                request.log.info({ audit: event }, 'sudo');
+              },
             },
-          },
+          });
+          const result = await work({ env, backend: createPgSyncBackend(pg, tenant.registry) });
+          await env.flush();
+          return result;
+        })
+        .catch((error: unknown) => {
+          throw translateCommitError(error);
         });
-        const result = await work({ env, backend: createPgSyncBackend(pg, tenant.registry) });
-        await env.flush();
-        return result;
-      });
 
   // ─── authentication ──────────────────────────────────────────────────────────────────
   app.post('/auth/login', async (request, reply) => {

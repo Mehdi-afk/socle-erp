@@ -28,7 +28,23 @@ import { createPgSession, type PgSession } from './session.js';
 const MAX_PARAMETERS = 30_000;
 
 const UNIQUE_VIOLATION = '23505';
+const FOREIGN_KEY_VIOLATION = '23503';
 const ROW_SECURITY_VIOLATION = '42501';
+
+/**
+ * Foreign keys are checked at commit (deferred), outside the storage calls: a violation
+ * surfaces from the transaction itself. It is a refusal (a referenced record does not exist,
+ * or a deleted record is still referenced), never a temporary failure. Callers running a
+ * transaction pass its error through this function.
+ */
+export function translateCommitError(error: unknown): unknown {
+  if (error instanceof pg.DatabaseError && error.code === FOREIGN_KEY_VIOLATION) {
+    return new ValidationError(
+      'A referenced record does not exist, or a deleted record is still referenced.',
+    );
+  }
+  return error;
+}
 
 function toParameter(definition: FieldDefinition, value: unknown): unknown {
   // The driver turns JavaScript arrays into PostgreSQL arrays: JSON always goes as text.
