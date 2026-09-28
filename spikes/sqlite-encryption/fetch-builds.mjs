@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// Downloads the two SQLite WASM builds compared by ADR 007 and checks their SHA-256 before
-// extracting them into ./builds (ignored by Git). Extraction uses the system `tar`
-// (bsdtar reads zip archives on Windows and macOS; zip archives use `unzip` on Linux).
+// Downloads the two SQLite WASM builds compared by ADR 007, checks their pinned SHA-256 and
+// only then writes and extracts them into ./builds (ignored by Git). Extraction uses bsdtar,
+// which reads zip archives; it ships with Windows and macOS (on Linux: `libarchive-tools`).
+// A zip cannot be streamed reliably (central directory at the end): it goes through a file.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -27,6 +28,14 @@ const ARCHIVES = [
   },
 ];
 
+// Windows' own bsdtar, not a GNU tar (which cannot read zip) that may come first in PATH.
+const tar =
+  process.platform === 'win32'
+    ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    : process.platform === 'linux'
+      ? 'bsdtar'
+      : 'tar';
+
 // Every path below is built from constants of this file, inside ./builds.
 mkdirSync(builds, { recursive: true });
 for (const archive of ARCHIVES) {
@@ -39,21 +48,13 @@ for (const archive of ARCHIVES) {
       `${archive.file}: SHA-256 ${digest} does not match the pinned ${archive.sha256}`,
     );
   }
+  // From here on, `bytes` is exactly the pinned archive.
   const target = join(builds, archive.name);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path
   mkdirSync(target, { recursive: true });
   const path = join(builds, archive.file);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path
   writeFileSync(path, bytes);
-  if (process.platform === 'linux' && archive.file.endsWith('.zip')) {
-    execFileSync('unzip', ['-q', '-o', path, '-d', target], { stdio: 'inherit' });
-  } else {
-    // Windows' own bsdtar (reads zip), not a GNU tar that may come first in PATH.
-    const tar =
-      process.platform === 'win32'
-        ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
-        : 'tar';
-    execFileSync(tar, ['-xf', path, '-C', target], { stdio: 'inherit' });
-  }
+  execFileSync(tar, ['-xf', path, '-C', target], { stdio: 'inherit' });
   console.log(`${archive.name}: verified and extracted`);
 }

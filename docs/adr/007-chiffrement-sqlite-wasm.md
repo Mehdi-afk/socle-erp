@@ -1,6 +1,6 @@
 # ADR 007 — Chiffrement de la base locale SQLite WASM
 
-- **Statut** : proposé (en attente de la décision du propriétaire)
+- **Statut** : accepté (décision du propriétaire le 2026-09-28 : option A et gestion de clé proposée)
 - **Date** : 2026-09-28
 - **Décideur** : Messaoudene Mehdi
 - **Sections d'`ARCHITECTURE.md` concernées** : §2.4 (« Base locale »), §6.5, §13 (O5)
@@ -67,11 +67,11 @@ Deux faits vérifiés le 2026-09-28 :
 | C. Chiffrement applicatif des champs (AES-GCM) | Build officiel sur npm ; aucune archive externe | Recherche, tri et index impossibles sur les champs protégés ; tout le reste en clair ; +30 % de taille ; chaque modèle doit déclarer ses champs à protéger (risque d'oubli) |
 | D. Pas de chiffrement | Simple | Contraire à §6.5 ; données de clients exposées en cas de vol d'appareil (RGPD, loi 18-07) |
 
-## Décision proposée
+## Décision
 
 **Option A : SQLite3 Multiple Ciphers en ChaCha20-Poly1305, avec `kdf_iter = 1`.** La clé de 256 bits est dérivée en amont par l'application, qui passe une clé brute. Toute la base est chiffrée et authentifiée pour un surcoût imperceptible. Les fonctions dont l'ERP dépend restent intactes : recherche, tri, index et FTS5.
 
-**Proposition de gestion de clé** (à valider en même temps) :
+**Gestion de clé** (retenue) :
 
 1. À la première connexion sur l'appareil, le client tire une **clé de base aléatoire** de 256 bits (`crypto.getRandomValues`).
 2. Cette clé est stockée **uniquement enveloppée** (AES-KW ou AES-GCM) dans IndexedDB. La clé d'enveloppe est dérivée de deux éléments :
@@ -100,7 +100,7 @@ Deux faits vérifiés le 2026-09-28 :
   - les champs `sensitive` et `offline: false` restent **jamais répliqués** (§6.5), indépendamment de ce chiffrement.
 - Licences : SQLite3 Multiple Ciphers sous MIT ; SQLite dans le domaine public ; glue Emscripten sous MIT/NCSA. Rien d'interdit.
 - Limites du *spike* : un seul navigateur (Chromium) sur une seule machine. Firefox, Safari et le mobile restent à mesurer dans la CI Playwright de la phase 2, sans changement de décision attendu, car le coût est dominé par le WASM et identique partout.
-- Mise à jour d'`ARCHITECTURE.md` nécessaire : oui, une fois la décision prise. §2.4 remplacera « à valider en *spike* » par la décision, et §13 marquera O5 comme tranché.
+- Mise à jour d'`ARCHITECTURE.md` : faite. §2.4 indique la décision à la place de « à valider en *spike* », et §13 marque O5 comme tranché.
 
 ## Reproduire les mesures
 

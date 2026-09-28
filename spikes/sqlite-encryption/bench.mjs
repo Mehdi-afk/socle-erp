@@ -199,7 +199,8 @@ async function variant(name, init, open, fieldCrypto) {
     // Raw bytes on disk: is any plaintext readable?
     const bytes = globalThis.__pools.get(sqlite3).exportFile(file);
     const text = new TextDecoder('latin1').decode(bytes);
-    r.plaintextOnDisk = text.includes('example.com') || text.includes('alpha') ? 1 : 0;
+    // Names and notes all contain words such as "alpha": readable only if not encrypted.
+    r.plaintextOnDisk = text.includes('alpha') ? 1 : 0;
     if (run >= 0) results.push(r);
   }
   // Keys come from the measurements above, never from outside.

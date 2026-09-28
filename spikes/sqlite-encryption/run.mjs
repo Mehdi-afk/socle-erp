@@ -19,6 +19,15 @@ const TYPES = {
   '.wasm': 'application/wasm',
 };
 
+const VARIANTS = new Set([
+  'official-plain',
+  'mc-plain',
+  'mc-chacha20',
+  'mc-chacha20-kdf1',
+  'mc-sqlcipher-aes256',
+  'official-field-aesgcm',
+]);
+
 const candidates = [
   process.env.BROWSER,
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -41,7 +50,8 @@ const server = createServer((request, response) => {
     request.on('end', () => {
       response.end('ok');
       const message = JSON.parse(body);
-      if (message.partial) console.error(`done: ${message.partial}`);
+      // Only known variant names are echoed (the body comes from the page).
+      if (VARIANTS.has(message.partial)) console.error(`done: ${String(message.partial)}`);
       if (message.variants || message.fatal) finish(message);
     });
     return;
