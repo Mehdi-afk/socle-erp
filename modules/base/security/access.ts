@@ -25,8 +25,6 @@ export default [
   { model: 'res.country', group: 'base.group_system', ...all },
   { model: 'res.country.state', group: 'base.group_user', ...read },
   { model: 'res.country.state', group: 'base.group_system', ...all },
-  { model: 'res.city', group: 'base.group_user', ...read },
-  { model: 'res.city', group: 'base.group_system', ...all },
   { model: 'ir.config_parameter', group: 'base.group_system', ...all },
   // Sequences: numbers are taken by business code (usually through sudo), set up by admins.
   { model: 'ir.sequence', group: 'base.group_user', ...read },

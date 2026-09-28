@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { parseCommand, UsageError } from './args.js';
-import { ConfigError, databaseUrl, readConfig, tenantDatabase } from './config.js';
+import { databaseUrl, tenantDatabase, TenantNameError } from '@socle/runtime';
+
+import { ConfigError, readConfig } from './config.js';
 
 const command = (line: string) => parseCommand(line.split(' ').filter(Boolean)).command;
 
@@ -83,7 +85,7 @@ describe('configuration', () => {
     expect(tenantDatabase('acme')).toBe('socle_acme');
     expect(tenantDatabase('acme-sarl')).toBe('socle_acme_sarl');
     for (const bad of ['a', 'Acme', '1acme', 'acme-', 'ac--me', 'ac_me', 'x'.repeat(33), '../x']) {
-      expect(() => tenantDatabase(bad), bad).toThrow(ConfigError);
+      expect(() => tenantDatabase(bad), bad).toThrow(TenantNameError);
     }
   });
 

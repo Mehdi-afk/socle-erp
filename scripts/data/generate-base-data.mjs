@@ -12,8 +12,7 @@
 //   in the ICU of the running Node.js (the ISO list itself is not freely redistributable).
 // - France: départements of the Code officiel géographique (INSEE, Licence Ouverte 2.0).
 // - Algeria: the 58 wilayas (loi n° 84-09 du 4 février 1984, loi n° 19-12 du 11 décembre 2019,
-//   JORADP n° 78 du 18 décembre 2019). Communes are not included until an official
-//   machine-readable list is chosen.
+//   JORADP n° 78 du 18 décembre 2019). Communes are free text on addresses (no list).
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

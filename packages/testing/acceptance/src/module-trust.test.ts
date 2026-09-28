@@ -6,7 +6,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-import { loadModules } from '@socle/cli';
+import { loadModules } from '@socle/runtime';
 import { exportPublicKey, generateSigningKeyPair, utf8 } from '@socle/crypto';
 import {
   countersignPackage,

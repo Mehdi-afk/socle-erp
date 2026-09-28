@@ -181,6 +181,7 @@ socle-erp/
 │   ├── ui/                # design system : tokens, composants, RTL, mode sombre
 │   ├── view-engine/       # rendu React des vues form / list / kanban / calendar / pivot / graph
 │   ├── crypto/            # argon2id, signatures Ed25519, chaîne de hachage d'audit
+│   ├── runtime/           # côté Node : modules chargés depuis le disque, clients et leurs modules (ADR 014)
 │   ├── licensing/         # vérification HORS LIGNE des clés Pro (le code est public, la clé privée non)
 │   └── testing/           # fabriques, fixtures, base éphémère
 ├── modules/               # modules community (LGPL)

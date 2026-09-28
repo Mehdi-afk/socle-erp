@@ -5,7 +5,15 @@
 // company rule declared once on the `company.scoped` mixin.
 import { join } from 'node:path';
 
-import { compose, databaseUrl, loadModules, main, tenantDatabase } from '@socle/cli';
+import { main } from '@socle/cli';
+import {
+  compose,
+  createTenantSource,
+  databaseUrl,
+  listTenants,
+  loadModules,
+  tenantDatabase,
+} from '@socle/runtime';
 import { randomBytes } from 'node:crypto';
 import {
   createAccessControl,
@@ -25,10 +33,14 @@ let db: Executor;
 let registry: ModelRegistry;
 let security: SecurityPolicy;
 let installOutput = '';
+let tenantName = '';
+let adminUrl = '';
 
 beforeAll(async () => {
   const pgUrl = inject('pgUrl');
   const tenant = `base${randomBytes(4).toString('hex')}`;
+  tenantName = tenant;
+  adminUrl = pgUrl;
   const lines: string[] = [];
   const io = {
     env: { SOCLE_DATABASE_URL: pgUrl, SOCLE_MODULE_PATHS: REPOSITORY_MODULES },
@@ -218,5 +230,27 @@ describe('module base', () => {
     ).rejects.toThrow('rolled back');
     expect(await next('test.standard')).toBe('S003');
     await expect(next('test.missing')).rejects.toThrow(/No active sequence/);
+  });
+
+  it('is found at run time with its installed modules', async () => {
+    const source = createTenantSource({ adminUrl, moduleRoots: [REPOSITORY_MODULES] });
+    try {
+      const resolved = await source.resolve(tenantName);
+      expect(resolved?.modules).toEqual(['base']);
+      expect(resolved?.registry.has('res.partner')).toBe(true);
+      expect(resolved?.connectionString).toContain(tenantDatabase(tenantName));
+      // The composition of a set of modules is computed once.
+      expect((await source.resolve(tenantName))?.registry).toBe(resolved?.registry);
+      expect(await source.resolve('nobody-here')).toBeUndefined();
+      expect(await source.resolve('Not A Tenant')).toBeUndefined();
+    } finally {
+      await source.close();
+    }
+    const admin = createPgDatabase({ connectionString: adminUrl, max: 1 });
+    try {
+      expect(await listTenants(admin)).toContain(tenantName);
+    } finally {
+      await admin.destroy();
+    }
   });
 });

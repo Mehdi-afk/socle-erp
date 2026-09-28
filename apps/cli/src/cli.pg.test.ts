@@ -12,7 +12,7 @@ import { createPgDatabase, type Executor } from '@socle/orm-pg';
 import { sql } from 'kysely';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
-import { databaseUrl, tenantDatabase } from './config.js';
+import { databaseUrl, tenantDatabase } from '@socle/runtime';
 import { main } from './main.js';
 import { useTempDirs, writeFiles, writeShopModules } from './test-support.js';
 

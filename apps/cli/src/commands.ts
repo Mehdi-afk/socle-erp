@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { securityRecords, SocleError } from '@socle/framework';
+import { SocleError } from '@socle/framework';
 import {
   createPgDatabase,
   createTemplateSnapshots,
@@ -20,9 +20,10 @@ import {
 } from '@socle/orm-pg';
 import { sql } from 'kysely';
 
-import { databaseUrl, tenantDatabase, type CliConfig } from './config.js';
-import { loadModules } from './loader.js';
-import { compose, planInstall, planUninstall, planUpgrade } from './plan.js';
+import { compose, databaseUrl, loadModules, moduleData, tenantDatabase } from '@socle/runtime';
+
+import type { CliConfig } from './config.js';
+import { planInstall, planUninstall, planUpgrade } from './plan.js';
 
 export class CommandError extends SocleError {
   constructor(message: string) {
@@ -219,18 +220,11 @@ export async function moduleInstall(
       security,
       snapshots: t.snapshots,
       actor: 'cli',
-      modules: plan.install.map((name) => {
-        const module = set.get(name);
-        return {
-          name,
-          version: module.manifest.version,
-          data: [
-            ...securityRecords(module.security, (model) => registry.has(model)),
-            ...module.data,
-            ...(demo ? module.demo : []),
-          ],
-        };
-      }),
+      modules: plan.install.map((name) => ({
+        name,
+        version: set.get(name).manifest.version,
+        data: moduleData(set, registry, name, { demo }),
+      })),
     });
     context.out.line(
       `Installed ${result.installed.join(', ')} (snapshot ${result.snapshot.name}).`,
@@ -262,10 +256,7 @@ export async function moduleUpgrade(
         name,
         version: to,
         migrations: set.get(name).migrations,
-        data: [
-          ...securityRecords(set.get(name).security, (model) => registry.has(model)),
-          ...set.get(name).data,
-        ],
+        data: moduleData(set, registry, name),
       })),
     });
     reportData(context, result.data);

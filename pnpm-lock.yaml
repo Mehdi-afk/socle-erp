@@ -154,6 +154,9 @@ importers:
       '@socle/orm-pg':
         specifier: workspace:*
         version: link:../../packages/orm-pg
+      '@socle/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       kysely:
         specifier: ^0.29.6
         version: 0.29.6
@@ -309,6 +312,28 @@ importers:
         specifier: ^4.10.2
         version: 4.10.2
 
+  packages/runtime:
+    dependencies:
+      '@socle/framework':
+        specifier: workspace:*
+        version: link:../framework
+      '@socle/orm-pg':
+        specifier: workspace:*
+        version: link:../orm-pg
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+      '@types/semver':
+        specifier: ^7.8.0
+        version: 7.8.0
+
   packages/sync:
     dependencies:
       '@socle/crypto':
@@ -355,6 +380,9 @@ importers:
       '@socle/orm-sqlite':
         specifier: workspace:*
         version: link:../../orm-sqlite
+      '@socle/runtime':
+        specifier: workspace:*
+        version: link:../../runtime
       '@socle/server':
         specifier: workspace:*
         version: link:../../../apps/server
