@@ -608,7 +608,7 @@ La sécurité est une **procédure qui s'applique à chaque étape**, pas une ph
 ### 9.4 Chaîne d'approvisionnement (point faible assumé de l'écosystème npm)
 
 - `pnpm` avec **`minimumReleaseAge`** (une version publiée depuis moins de 7 jours n'est pas installée — parade aux paquets piégés retirés en quelques heures) et **`onlyBuiltDependencies`** (scripts d'installation interdits sauf liste blanche).
-- Lockfile obligatoire, `pnpm install --frozen-lockfile` en CI, Renovate groupé et temporisé.
+- Lockfile obligatoire, `pnpm install --frozen-lockfile` en CI, **Dependabot** groupé, hebdomadaire, avec délai minimal de 7 jours (ADR 008).
 - Actions GitHub **épinglées par SHA**, `GITHUB_TOKEN` en lecture seule par défaut, OpenSSF **Scorecard** publié.
 - À chaque release : **SBOM CycloneDX**, **attestations de provenance** GitHub (SLSA), images signées **cosign**, scan **Trivy**.
 - Images Docker distroless, utilisateur non-root, système de fichiers en lecture seule, capacités Linux retirées.

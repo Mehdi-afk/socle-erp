@@ -1,4 +1,4 @@
-# ADR 001 — TypeScript de bout en bout
+﻿# ADR 001 — TypeScript de bout en bout
 
 - **Statut** : accepté
 - **Date** : 2026-09-28
@@ -26,7 +26,7 @@ Socle ERP est offline-first sur **toute** l'application (D7) : la logique métie
 
 - Positives : même définition de modèle partout ; refactorings sûrs ; un seul langage pour les contributeurs.
 - Négatives / dette acceptée : chaîne d'approvisionnement npm à verrouiller ; Factur-X délégué au service Mustang en conteneur.
-- Sécurité : `minimumReleaseAge` 7 jours, `trustPolicy`, `blockExoticSubdeps`, `allowBuilds`, lockfile gelé, OSV-Scanner, Renovate temporisé (§9.4, mis en place en phase 0).
+- Sécurité : `minimumReleaseAge` 7 jours, `trustPolicy`, `blockExoticSubdeps`, `allowBuilds`, lockfile gelé, OSV-Scanner, Dependabot temporisé (§9.4, ADR 008).
 - Précision de version (phase 0) : **TypeScript 6.0.x** est épinglé, car typescript-eslint ne supporte pas encore TypeScript 7 (portage natif). Le passage à TS 7 fera l'objet d'un ADR.
 - Argent en entiers d'unités mineures ; taux avec `decimal.js`.
 - Mise à jour d'`ARCHITECTURE.md` nécessaire : non.

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# Dependency updates (ADR 008): GitHub-native, weekly, grouped, 7-day cooldown.
+version: 2
+updates:
+  - package-ecosystem: npm # also handles pnpm-lock.yaml
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:00'
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 7 # never propose a version published less than 7 days ago
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm-non-major:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint does not support TypeScript >= 6.1 yet (ADR 001)
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
+
+  - package-ecosystem: github-actions # keeps SHA pins, updates the version comment
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:00'
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ['*']
