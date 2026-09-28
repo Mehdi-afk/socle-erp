@@ -3,6 +3,7 @@ import { SocleError } from '@socle/framework';
 
 import { parseCommand, USAGE, type Command } from './args.js';
 import {
+  auditVerify,
   dbBackup,
   dbCreate,
   dbDrop,
@@ -56,6 +57,8 @@ async function run(command: Command, io: Io): Promise<boolean> {
     case 'module.upgrade':
       await moduleUpgrade(context, command.tenant, command.modules);
       return true;
+    case 'audit.verify':
+      return auditVerify(context, command.tenant);
     case 'module.uninstall':
       return moduleUninstall(
         context,

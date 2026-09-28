@@ -12,6 +12,7 @@ import {
   installedModules,
   uninstallModules,
   upgradeModules,
+  verifyAudit,
   type DataLoadResult,
   type Executor,
   type ModuleExport,
@@ -217,6 +218,7 @@ export async function moduleInstall(
       registry,
       security,
       snapshots: t.snapshots,
+      actor: 'cli',
       modules: plan.install.map((name) => {
         const module = set.get(name);
         return {
@@ -255,6 +257,7 @@ export async function moduleUpgrade(
       registry,
       security,
       snapshots: t.snapshots,
+      actor: 'cli',
       modules: plan.upgrade.map(({ name, to }) => ({
         name,
         version: to,
@@ -298,6 +301,7 @@ export async function moduleUninstall(
       registry,
       security,
       snapshots: t.snapshots,
+      actor: 'cli',
       modules: plan.remove.map((name) => set.get(name).models),
       async exportData(data: ModuleExport) {
         await mkdir(directory, { recursive: true });
@@ -312,4 +316,21 @@ export async function moduleUninstall(
     for (const file of written) context.out.line(`Data exported to ${file}`);
     return true;
   });
+}
+
+// ─── audit ───────────────────────────────────────────────────────────────────────────────
+
+/** @returns false when the chain is broken. */
+export async function auditVerify(context: Context, tenant: string): Promise<boolean> {
+  const result = await withTenant(context, tenant, (t) => verifyAudit(t.db));
+  if (result.ok) {
+    context.out.line(
+      `Audit journal of "${tenant}": ${String(result.count)} entries, chain intact.`,
+    );
+    return true;
+  }
+  context.out.line(
+    `Audit journal of "${tenant}" is BROKEN at entry ${String(result.seq)}: ${result.reason} (${String(result.count)} entries verified before it).`,
+  );
+  return false;
 }

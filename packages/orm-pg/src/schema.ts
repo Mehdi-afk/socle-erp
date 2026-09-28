@@ -45,6 +45,9 @@ export const AUTH_TABLES = {
  */
 export const EXTERNAL_ID_TABLE = 'socle_external_id';
 
+/** The audit journal, chained by hash (see audit.ts). Reserved name. */
+export const AUDIT_TABLE = 'socle_audit';
+
 /**
  * Per-field versions of a record (JSON object field → version), the base of conflict
  * detection. A technical column of every model table, managed by the storage.
@@ -263,6 +266,7 @@ export function buildSchema(registry: ModelRegistry): DatabaseSchema {
       ...Object.values(SYNC_TABLES),
       ...Object.values(AUTH_TABLES),
       EXTERNAL_ID_TABLE,
+      AUDIT_TABLE,
     ].flatMap((reserved) => [
       [reserved, 'the ORM'],
       [`${reserved}_pkey`, 'the ORM'],

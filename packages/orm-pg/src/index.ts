@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 export { applySchema } from './apply.js';
+export { appendAudit, auditEntry, verifyAudit } from './audit.js';
+export type { AuditEntry, AuditRecord, AuditVerification } from './audit.js';
 export type { ApplySchemaOptions } from './apply.js';
 export type { DataLoadResult } from './data.js';
 export { DomainCompiler, NotMirrorable, SessionValue } from './compile.js';
@@ -27,6 +29,7 @@ export {
   SYNC_TABLES,
   AUTH_TABLES,
   EXTERNAL_ID_TABLE,
+  AUDIT_TABLE,
 } from './schema.js';
 export type {
   ColumnSchema,

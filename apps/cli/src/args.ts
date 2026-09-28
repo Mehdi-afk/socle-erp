@@ -7,7 +7,10 @@ import { SocleError } from '@socle/framework';
 
 export type Command =
   | { readonly kind: 'help' }
-  | { readonly kind: 'db.create' | 'db.backup' | 'module.list'; readonly tenant: string }
+  | {
+      readonly kind: 'db.create' | 'db.backup' | 'module.list' | 'audit.verify';
+      readonly tenant: string;
+    }
   | { readonly kind: 'db.drop'; readonly tenant: string; readonly yes: boolean }
   | {
       readonly kind: 'db.restore';
@@ -60,6 +63,8 @@ export const USAGE = `Usage: socle <command>
 
   scaffold module <name> [--dir <dir>]   Create a module skeleton (default dir: modules)
 
+  audit verify <tenant>                  Recompute the hash chain of the audit journal
+
 Environment:
   SOCLE_DATABASE_URL   postgres:// URL of the maintenance database (right to create databases)
   SOCLE_MODULE_PATHS   module directories, separated by the path delimiter (default: modules)
@@ -79,6 +84,7 @@ const ACCEPTS: Record<string, readonly Option[]> = {
   'module.upgrade': [],
   'module.uninstall': ['yes', 'export-dir'],
   'scaffold.module': ['dir'],
+  'audit.verify': [],
 };
 
 export interface ParsedArgs {
@@ -136,6 +142,7 @@ export function parseCommand(argv: readonly string[]): ParsedArgs {
     case 'db.create':
     case 'db.backup':
     case 'module.list':
+    case 'audit.verify':
       exactly(1);
       return { command: { kind, tenant: tenant() }, debug };
     case 'db.drop':

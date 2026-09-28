@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { exportPublicKey, generateSigningKeyPair, uuidv7 } from '@socle/crypto';
 import { buildModelRegistry, buildSecurityPolicy, defineModel, f } from '@socle/framework';
-import { applySchema, createPgDatabase, type Executor } from '@socle/orm-pg';
+import { applySchema, createPgDatabase, verifyAudit, type Executor } from '@socle/orm-pg';
 import { signMutation } from '@socle/sync';
 import { sql } from 'kysely';
 import { afterAll, describe, expect, inject, it } from 'vitest';
@@ -320,6 +320,41 @@ describe('HTTP server', () => {
     });
     expect(text.statusCode).toBe(415);
     expect(JSON.stringify(text.json())).not.toMatch(/stack|at /);
+  });
+
+  it('journals sign-ins and changes in the hash-chained audit journal', async () => {
+    const { request, signIn, db } = await server();
+    expect(
+      (
+        await request('POST', '/auth/login', {
+          body: { login: 'alice@acme.test', password: 'nope' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const alice = await signIn('alice@acme.test', 'alice-pass');
+    const created = await request('POST', '/rpc/srv.invoice/create', {
+      cookie: alice,
+      body: { values: { name: 'Audited', companyId: C1 } },
+    });
+    expect(created.statusCode).toBe(200);
+    const rows = await sql<{
+      kind: string;
+      user_id: string | null;
+      model: string | null;
+      details: Record<string, unknown>;
+    }>`select kind, user_id, model, details from socle_audit order by seq`.execute(db);
+    expect(rows.rows).toEqual([
+      { kind: 'login_failed', user_id: null, model: null, details: { login: 'alice@acme.test' } },
+      { kind: 'login', user_id: 'alice', model: null, details: {} },
+      {
+        kind: 'create',
+        user_id: 'alice',
+        model: 'srv.invoice',
+        details: { fields: ['companyId', 'name'], su: false },
+      },
+    ]);
+    expect(JSON.stringify(rows.rows)).not.toContain('nope');
+    expect(await verifyAudit(db)).toEqual({ ok: true, count: 3 });
   });
 
   it('synchronises a device over HTTP', async () => {

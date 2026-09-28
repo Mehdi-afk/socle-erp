@@ -162,6 +162,31 @@ describe('socle db and module commands', () => {
   });
 });
 
+describe('audit journal from the CLI', () => {
+  it('verifies the chain and reports an entry changed by hand', async () => {
+    const [modules, cwd] = [await tempDir(), await tempDir()];
+    await writeShopModules(modules, '0.1.0');
+    const socle = cli([modules], cwd);
+    const tenant = newTenant();
+    await socle('db', 'create', tenant);
+    await socle('module', 'install', tenant, 'shop');
+    expect(await socle('audit', 'verify', tenant)).toMatchObject({
+      code: 0,
+      out: /1 entries, chain intact/,
+    });
+    const kinds = await sql<{
+      kind: string;
+      user_id: string;
+    }>`select kind, user_id from socle_audit`.execute(tenantDb(tenant));
+    expect(kinds.rows).toEqual([{ kind: 'module.install', user_id: 'cli' }]);
+    await sql`update socle_audit set user_id = 'someone else'`.execute(tenantDb(tenant));
+    expect(await socle('audit', 'verify', tenant)).toMatchObject({
+      code: 1,
+      out: /BROKEN at entry 1: the entry was changed/,
+    });
+  });
+});
+
 describe('module data from the CLI', () => {
   it('loads data/ always and demo/ only with --demo', async () => {
     const [modules, cwd] = [await tempDir(), await tempDir()];

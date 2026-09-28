@@ -12,6 +12,7 @@ describe('command line', () => {
   it('parses every command', () => {
     expect(command('')).toEqual({ kind: 'help' });
     expect(command('db create acme')).toEqual({ kind: 'db.create', tenant: 'acme' });
+    expect(command('audit verify acme')).toEqual({ kind: 'audit.verify', tenant: 'acme' });
     expect(command('db drop acme --yes')).toEqual({ kind: 'db.drop', tenant: 'acme', yes: true });
     expect(command('db drop acme')).toEqual({ kind: 'db.drop', tenant: 'acme', yes: false });
     expect(command('db restore acme')).toEqual({
