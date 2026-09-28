@@ -4,10 +4,41 @@
 
 ```ts
 
+import { SigningPrivateKey } from '@socle/crypto';
+import { SigningPublicKey } from '@socle/crypto';
+
 // @public
 export type Capability = 'sudo' | 'cron' | 'files' | {
     readonly network: readonly string[];
 };
+
+// @public
+export type CapabilityAuditHook = (event: {
+    readonly moduleName: string;
+    readonly capability: string;
+}) => void;
+
+// @public
+export class CapabilityDeniedError extends SocleError {
+    constructor(moduleName: string, capability: string);
+    // (undocumented)
+    readonly capability: string;
+    // (undocumented)
+    readonly moduleName: string;
+}
+
+// @public
+export interface CapabilityGuard {
+    // (undocumented)
+    allows(capability: SimpleCapability): boolean;
+    // (undocumented)
+    readonly moduleName: string;
+    readonly networkHosts: readonly string[];
+    // (undocumented)
+    require(capability: SimpleCapability): void;
+    // (undocumented)
+    requireHost(host: string): void;
+}
 
 // @public (undocumented)
 export interface CatalogOptions {
@@ -15,7 +46,33 @@ export interface CatalogOptions {
 }
 
 // @public
+export function countersignPackage(pkg: SignedModulePackage, marketplace: {
+    readonly keyId: string;
+    readonly key: SigningPrivateKey;
+}): Promise<SignedModulePackage>;
+
+// @public
+export function createCapabilityGuard(manifest: ModuleManifest, onDenied?: CapabilityAuditHook): CapabilityGuard;
+
+// @public
 export function createCatalog(modules: Iterable<DiscoveredModule>, options?: CatalogOptions): ModuleCatalog;
+
+// @public
+export function createHttpClient(options: HttpClientOptions): HttpClient;
+
+// @public
+export function createPackageIndex(input: {
+    readonly manifest: ManifestInput;
+    readonly files: ReadonlyMap<string, Uint8Array>;
+    readonly publisher: {
+        readonly id: string;
+        readonly keyId: string;
+        readonly publicKey: SigningPublicKey;
+    };
+}): Promise<ModulePackageIndex>;
+
+// @public
+export function createTrustStore(marketplaceKeys: Readonly<Record<string, string>>): Promise<TrustStore>;
 
 // @public
 export function defineManifest(input: ManifestInput): ModuleManifest;
@@ -39,6 +96,46 @@ export class DuplicateModuleError extends SocleError {
     readonly moduleName: string;
 }
 
+// @public
+export type FetchLike = (url: string, init: {
+    readonly method: string;
+    readonly headers?: Readonly<Record<string, string>> | undefined;
+    readonly body?: string | Uint8Array | undefined;
+    readonly redirect: 'manual';
+    readonly signal?: unknown;
+}) => Promise<FetchResponseLike>;
+
+// @public (undocumented)
+export interface FetchResponseLike {
+    // (undocumented)
+    arrayBuffer(): Promise<ArrayBuffer>;
+    // (undocumented)
+    readonly headers: {
+        get(name: string): string | null;
+    };
+    // (undocumented)
+    readonly status: number;
+}
+
+// @public
+export function findRevocation(list: RevocationList, subject: RevocationSubject): RevocationEntry | undefined;
+
+// @public
+export interface HttpClient {
+    // (undocumented)
+    request(url: string, request?: OutboundRequest): Promise<OutboundResponse>;
+}
+
+// @public (undocumented)
+export interface HttpClientOptions {
+    readonly allow: readonly string[] | CapabilityGuard;
+    readonly fetch: FetchLike;
+    // (undocumented)
+    readonly maxRedirects?: number | undefined;
+    // (undocumented)
+    readonly maxResponseBytes?: number | undefined;
+}
+
 // @public (undocumented)
 export class IncompatibleEngineError extends SocleError {
     constructor(moduleName: string, range: string, coreVersion: string);
@@ -50,12 +147,35 @@ export class IncompatibleEngineError extends SocleError {
     readonly range: string;
 }
 
+// @public
+export interface InstallationPolicy {
+    // (undocumented)
+    readonly allowUnsigned?: boolean | undefined;
+    // (undocumented)
+    readonly deployment: 'saas' | 'self-hosted';
+}
+
+// @public
+export class IntegrityError extends SocleError {
+    constructor(path: string, reason: 'modified' | 'added' | 'missing');
+    // (undocumented)
+    readonly path: string;
+}
+
 // @public (undocumented)
 export class InvalidManifestError extends SocleError {
     constructor(moduleHint: string, issues: readonly string[]);
     // (undocumented)
     readonly issues: readonly string[];
 }
+
+// @public
+export class InvalidPackageError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export function isSafeRelativePath(path: string): boolean;
 
 // @public
 export interface LocalizedText {
@@ -156,10 +276,158 @@ export interface ModuleManifest {
 }
 
 // @public
+export interface ModulePackageIndex {
+    readonly files: Readonly<Record<string, string>>;
+    // (undocumented)
+    readonly format: 'socle-module/1';
+    // (undocumented)
+    readonly manifest: Readonly<Record<string, unknown>>;
+    // (undocumented)
+    readonly publisher: {
+        readonly id: string;
+        readonly keyId: string;
+        readonly publicKey: string;
+    };
+}
+
+// @public
+export function modulesToDisable(list: RevocationList, installed: Iterable<RevocationSubject>): string[];
+
+// @public (undocumented)
+export interface OutboundRequest {
+    // (undocumented)
+    readonly body?: string | Uint8Array | undefined;
+    // (undocumented)
+    readonly headers?: Readonly<Record<string, string>> | undefined;
+    // (undocumented)
+    readonly method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | undefined;
+}
+
+// @public
+export class OutboundRequestError extends SocleError {
+    constructor(message: string);
+}
+
+// @public (undocumented)
+export interface OutboundResponse {
+    // (undocumented)
+    readonly body: Uint8Array;
+    // (undocumented)
+    readonly headers: {
+        get(name: string): string | null;
+    };
+    // (undocumented)
+    readonly status: number;
+    // (undocumented)
+    readonly url: string;
+}
+
+// @public
+export interface PackageSource {
+    // (undocumented)
+    listFiles(): Promise<readonly string[]>;
+    // (undocumented)
+    readFile(path: string): Promise<Uint8Array>;
+}
+
+// @public
 export function parseManifest(value: unknown): ModuleManifest;
 
 // @public
 export function resolveInstallation(catalog: ModuleCatalog, requested: Iterable<string>, installed?: Iterable<string>): string[];
+
+// @public
+export type RevocationEntry = {
+    readonly kind: 'package';
+    readonly digest: string;
+    readonly reason: string;
+} | {
+    readonly kind: 'publisher';
+    readonly keyId: string;
+    readonly reason: string;
+} | {
+    readonly kind: 'module';
+    readonly name: string;
+    readonly versions: string;
+    readonly reason: string;
+};
+
+// @public
+export interface RevocationList {
+    // (undocumented)
+    readonly entries: readonly RevocationEntry[];
+    // (undocumented)
+    readonly format: 'socle-revocations/1';
+    // (undocumented)
+    readonly issuedAt: string;
+    // (undocumented)
+    readonly sequence: number;
+}
+
+// @public
+export class RevocationRollbackError extends SocleError {
+    constructor(received: number, lastAccepted: number);
+}
+
+// @public
+export interface RevocationSubject {
+    // (undocumented)
+    readonly digest: string;
+    // (undocumented)
+    readonly manifest: {
+        readonly name: string;
+        readonly version: string;
+    };
+    // (undocumented)
+    readonly publisherKeyId: string;
+}
+
+// @public
+export class RevokedModuleError extends SocleError {
+    constructor(moduleName: string, reason: string);
+    // (undocumented)
+    readonly reason: string;
+}
+
+// @public
+export class SignatureError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export interface SignedModulePackage {
+    // (undocumented)
+    readonly index: ModulePackageIndex;
+    // (undocumented)
+    readonly marketplace?: {
+        readonly keyId: string;
+        readonly signature: string;
+    } | undefined;
+    // (undocumented)
+    readonly publisherSignature?: string | undefined;
+}
+
+// @public (undocumented)
+export interface SignedRevocationList {
+    // (undocumented)
+    readonly keyId: string;
+    // (undocumented)
+    readonly list: RevocationList;
+    // (undocumented)
+    readonly signature: string;
+}
+
+// @public
+export function signPackage(index: ModulePackageIndex, publisherKey: SigningPrivateKey): Promise<SignedModulePackage>;
+
+// @public
+export function signRevocationList(list: RevocationList, marketplace: {
+    readonly keyId: string;
+    readonly key: SigningPrivateKey;
+}): Promise<SignedRevocationList>;
+
+// @public
+export type SimpleCapability = 'sudo' | 'cron' | 'files';
 
 // @public
 export const SOCLE_VERSION = "0.1.0";
@@ -174,12 +442,54 @@ export class SocleError extends Error {
 // @public
 export function topologicalOrder(catalog: ModuleCatalog, names: Iterable<string>): string[];
 
+// @public
+export interface TrustStore {
+    // (undocumented)
+    keyIds(): readonly string[];
+    // (undocumented)
+    marketplaceKey(keyId: string): SigningPublicKey | undefined;
+}
+
 // @public (undocumented)
 export class UnknownModuleError extends SocleError {
     constructor(moduleName: string);
     // (undocumented)
     readonly moduleName: string;
 }
+
+// @public
+export class UnsignedModuleError extends SocleError {
+    constructor(moduleName: string);
+}
+
+// @public (undocumented)
+export interface VerifiedModulePackage {
+    readonly digest: string;
+    // (undocumented)
+    readonly manifest: ModuleManifest;
+    // (undocumented)
+    readonly publisherId: string;
+    // (undocumented)
+    readonly publisherKeyId: string;
+    readonly trust: 'marketplace' | 'unsigned';
+}
+
+// @public
+export function verifyPackage(value: unknown, source: PackageSource, options: VerifyPackageOptions): Promise<VerifiedModulePackage>;
+
+// @public (undocumented)
+export interface VerifyPackageOptions {
+    // (undocumented)
+    readonly policy: InstallationPolicy;
+    readonly revocations?: RevocationList | undefined;
+    // (undocumented)
+    readonly trustStore: TrustStore;
+}
+
+// @public
+export function verifyRevocationList(value: unknown, trustStore: TrustStore, options?: {
+    readonly lastAcceptedSequence?: number | undefined;
+}): Promise<RevocationList>;
 
 // (No @packageDocumentation comment for this package)
 

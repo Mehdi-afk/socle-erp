@@ -26,3 +26,26 @@ rules:
     paths:
       exclude: ['/packages/ui/src/safe-html/**']
     pattern: <$EL dangerouslySetInnerHTML={...} />
+
+  - id: socle-module-no-direct-network
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Modules must not reach the network directly; use the HTTP client of their runtime context,
+      limited to the hosts declared in the manifest capabilities.
+    paths:
+      include: ['/modules/**']
+    pattern-either:
+      - pattern: fetch(...)
+      - pattern: new XMLHttpRequest(...)
+      - pattern: new WebSocket(...)
+      - pattern: import $X from 'node:http'
+      - pattern: import $X from 'node:https'
+      - pattern: import $X from 'node:net'
+      - pattern: import $X from 'http'
+      - pattern: import $X from 'https'
+      - pattern: import $X from 'net'
+      - pattern: require('http')
+      - pattern: require('https')
+      - pattern: require('node:https')
+      - pattern: require('node:http')

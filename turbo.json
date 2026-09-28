@@ -10,11 +10,11 @@
       "outputs": []
     },
     "api:check": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^api:check"],
       "outputs": []
     },
     "api:update": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^api:update"],
       "outputs": [],
       "cache": false
     }
