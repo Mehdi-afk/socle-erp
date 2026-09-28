@@ -18,6 +18,7 @@ import {
   type ModelMeta,
   type ModelRegistry,
   type SearchOptions,
+  type ServerCall,
   type Storage,
   type StoredValues,
 } from '@socle/framework';
@@ -126,6 +127,11 @@ export interface SyncReport {
 export interface Device {
   /** The storage to give the ORM environment on the device. */
   readonly storage: Storage;
+  /**
+   * The `queueServerCall` of the ORM environment on the device: a server method called offline
+   * is queued as an intent (one `call` mutation per record, replayed by the server in order).
+   */
+  queueServerCall(call: ServerCall): Promise<{ readonly queued: number }>;
   /** Pushes the outbox, then pulls until the server has nothing more. Not reentrant. */
   sync(): Promise<SyncReport>;
   state(): DeviceState;
@@ -446,6 +452,13 @@ export async function openDevice(options: DeviceOptions): Promise<Device> {
   return {
     storage: capturing,
     state: () => state,
+    async queueServerCall(call) {
+      const args = call.args.map((arg) => toJson(arg, `${call.model}.${call.method}`));
+      for (const id of call.ids) {
+        await record({ model: call.model, op: 'call', recordId: id, method: call.method, args });
+      }
+      return { queued: call.ids.length };
+    },
     async sync() {
       await queue;
       const affected = new Set<string>();

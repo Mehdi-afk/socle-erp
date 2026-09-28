@@ -122,6 +122,21 @@ describe('phase 1 acceptance', () => {
     await expectConverged(a, b);
     expect(Object.keys(await b.replica())).not.toContain(`acc.note:${note.ids[0] as string}`);
 
+    // A server method called offline is queued as an intent, run by the server on
+    // reconnection, and its effect reaches every device.
+    const promote = a.env().model('acc.partner').browse(alpha.ids) as unknown as {
+      actionPromote(): Promise<unknown>;
+    };
+    expect(await promote.actionPromote()).toEqual({ queued: 1 });
+    expect((await a.replica())[`acc.partner:${alpha.ids[0] as string}`]).toMatchObject({
+      score: 5,
+    });
+    await syncAll(a, b);
+    await expectConverged(a, b);
+    expect((await b.replica())[`acc.partner:${alpha.ids[0] as string}`]).toMatchObject({
+      score: 100,
+    });
+
     // A new device receives everything, extension fields included.
     const c = await tenant.device('phone');
     await c.engine.sync();

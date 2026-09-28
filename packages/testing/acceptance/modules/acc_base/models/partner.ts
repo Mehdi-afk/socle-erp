@@ -8,4 +8,12 @@ export default defineModel({
     city: f.char(),
     score: f.integer(),
   },
+  // Runs on the server only: called offline, it is queued as an intent.
+  serverMethods: (Base) =>
+    class extends Base {
+      async actionPromote(): Promise<void> {
+        await this.write({ score: 100 });
+        await this.env.flush();
+      }
+    },
 });
