@@ -8,6 +8,9 @@ import { SigningPrivateKey } from '@socle/crypto';
 import { SigningPublicKey } from '@socle/crypto';
 
 // @public
+export function andNodes(...nodes: DomainNode[]): DomainNode;
+
+// @public
 export type Capability = 'sudo' | 'cron' | 'files' | {
     readonly network: readonly string[];
 };
@@ -45,6 +48,35 @@ export interface CatalogOptions {
     readonly coreVersion?: string;
 }
 
+// @public (undocumented)
+export interface CharOptions extends CommonFieldOptions {
+    // (undocumented)
+    readonly size?: number | undefined;
+}
+
+// @public
+export interface CommonFieldOptions {
+    readonly compute?: string | undefined;
+    readonly default?: unknown;
+    readonly depends?: readonly string[] | undefined;
+    readonly groups?: readonly string[] | undefined;
+    // (undocumented)
+    readonly help?: LocalizedText | undefined;
+    readonly index?: boolean | undefined;
+    // (undocumented)
+    readonly label?: LocalizedText | undefined;
+    readonly offline?: boolean | undefined;
+    // (undocumented)
+    readonly readonly?: boolean | undefined;
+    readonly related?: string | undefined;
+    // (undocumented)
+    readonly required?: boolean | undefined;
+    readonly sensitive?: boolean | undefined;
+    readonly store?: boolean | undefined;
+    readonly tracking?: boolean | undefined;
+    readonly translate?: boolean | undefined;
+}
+
 // @public
 export function countersignPackage(pkg: SignedModulePackage, marketplace: {
     readonly keyId: string;
@@ -74,6 +106,12 @@ export function createPackageIndex(input: {
 // @public
 export function createTrustStore(marketplaceKeys: Readonly<Record<string, string>>): Promise<TrustStore>;
 
+// @public (undocumented)
+export interface DecimalOptions extends CommonFieldOptions {
+    // (undocumented)
+    readonly digits?: readonly [number, number] | undefined;
+}
+
 // @public
 export function defineManifest(input: ManifestInput): ModuleManifest;
 
@@ -89,12 +127,68 @@ export interface DiscoveredModule {
     readonly manifest: unknown;
 }
 
+// @public
+export type Domain = readonly (DomainCondition | '&' | '|' | '!')[];
+
+// @public
+export type DomainCondition = readonly [string, DomainOperator, unknown];
+
+// @public
+export class DomainError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export type DomainNode = {
+    readonly kind: 'true';
+} | {
+    readonly kind: 'and';
+    readonly children: readonly DomainNode[];
+} | {
+    readonly kind: 'or';
+    readonly children: readonly DomainNode[];
+} | {
+    readonly kind: 'not';
+    readonly child: DomainNode;
+} | {
+    readonly kind: 'condition';
+    readonly path: readonly string[];
+    readonly operator: DomainOperator;
+    readonly value: unknown;
+};
+
+// @public
+export type DomainOperator = '=' | '!=' | '<' | '<=' | '>' | '>=' | 'in' | 'not in' | 'like' | 'not like' | 'ilike' | 'not ilike' | '=like' | '=ilike';
+
 // @public (undocumented)
 export class DuplicateModuleError extends SocleError {
     constructor(moduleName: string);
     // (undocumented)
     readonly moduleName: string;
 }
+
+// @public
+export function emptyValue(definition: FieldDefinition): unknown;
+
+// @public
+export const f: Readonly<{
+    char: (options?: CharOptions) => TypedField<"char">;
+    text: (options?: CommonFieldOptions) => TypedField<"text">;
+    html: (options?: CommonFieldOptions) => TypedField<"html">;
+    integer: (options?: CommonFieldOptions) => TypedField<"integer">;
+    decimal: (options?: DecimalOptions) => TypedField<"decimal">;
+    monetary: (options?: MonetaryOptions) => TypedField<"monetary">;
+    boolean: (options?: CommonFieldOptions) => TypedField<"boolean">;
+    date: (options?: CommonFieldOptions) => TypedField<"date">;
+    datetime: (options?: CommonFieldOptions) => TypedField<"datetime">;
+    selection: <const K extends string>(values: readonly (readonly [K, string])[], options?: CommonFieldOptions) => SelectionField<K>;
+    many2one: <const C extends string>(comodel: C, options?: Many2oneOptions) => RelationalField<"many2one", C>;
+    one2many: <const C extends string>(comodel: C, inverse: string, options?: CommonFieldOptions) => RelationalField<"one2many", C>;
+    many2many: <const C extends string>(comodel: C, options?: Many2manyOptions) => RelationalField<"many2many", C>;
+    binary: (options?: CommonFieldOptions) => TypedField<"binary">;
+    json: (options?: CommonFieldOptions) => TypedField<"json">;
+    reference: (options?: CommonFieldOptions) => TypedField<"reference">;
+}>;
 
 // @public
 export type FetchLike = (url: string, init: {
@@ -115,6 +209,33 @@ export interface FetchResponseLike {
     };
     // (undocumented)
     readonly status: number;
+}
+
+// @public
+export interface FieldDefinition extends CommonFieldOptions {
+    readonly comodel?: string | undefined;
+    readonly currencyField?: string | undefined;
+    readonly digits?: readonly [number, number] | undefined;
+    readonly inverse?: string | undefined;
+    readonly ondelete?: 'restrict' | 'cascade' | 'set null' | undefined;
+    readonly relation?: string | undefined;
+    readonly selection?: readonly (readonly [string, string])[] | undefined;
+    readonly size?: number | undefined;
+    // (undocumented)
+    readonly type: FieldType;
+}
+
+// @public
+export type FieldResolver = (model: string, field: string) => FieldDefinition | undefined;
+
+// @public
+export type FieldType = 'char' | 'text' | 'html' | 'integer' | 'decimal' | 'monetary' | 'boolean' | 'date' | 'datetime' | 'selection' | 'many2one' | 'one2many' | 'many2many' | 'binary' | 'json' | 'reference';
+
+// @public
+export class FieldValueError extends SocleError {
+    constructor(field: string, message: string);
+    // (undocumented)
+    readonly field: string;
 }
 
 // @public
@@ -175,7 +296,16 @@ export class InvalidPackageError extends SocleError {
 }
 
 // @public
+export function isRecordId(value: unknown): value is string;
+
+// @public
+export function isRelational(definition: FieldDefinition): boolean;
+
+// @public
 export function isSafeRelativePath(path: string): boolean;
+
+// @public
+export function isStoredColumn(definition: FieldDefinition): boolean;
 
 // @public
 export interface LocalizedText {
@@ -209,6 +339,24 @@ export interface ManifestInput {
     } | undefined;
     readonly version: string;
 }
+
+// @public (undocumented)
+export interface Many2manyOptions extends CommonFieldOptions {
+    // (undocumented)
+    readonly relation?: string | undefined;
+}
+
+// @public (undocumented)
+export interface Many2oneOptions extends CommonFieldOptions {
+    // (undocumented)
+    readonly ondelete?: 'restrict' | 'cascade' | 'set null' | undefined;
+}
+
+// @public
+export function matchesCondition(fieldValue: unknown, operator: DomainOperator, operand: unknown): boolean;
+
+// @public
+export function matchesPattern(text: string, pattern: string, caseInsensitive: boolean): boolean;
 
 // @public (undocumented)
 export class MissingDependencyError extends SocleError {
@@ -294,6 +442,15 @@ export interface ModulePackageIndex {
 export function modulesToDisable(list: RevocationList, installed: Iterable<RevocationSubject>): string[];
 
 // @public (undocumented)
+export interface MonetaryOptions extends CommonFieldOptions {
+    // (undocumented)
+    readonly currencyField?: string | undefined;
+}
+
+// @public
+export function normalizeValue(name: string, definition: FieldDefinition, value: unknown): unknown;
+
+// @public (undocumented)
 export interface OutboundRequest {
     // (undocumented)
     readonly body?: string | Uint8Array | undefined;
@@ -331,7 +488,16 @@ export interface PackageSource {
 }
 
 // @public
+export function parseDomain(domain: Domain, model: string, resolve: FieldResolver): DomainNode;
+
+// @public
 export function parseManifest(value: unknown): ModuleManifest;
+
+// @public
+export interface RelationalField<T extends 'many2one' | 'one2many' | 'many2many', C extends string> extends TypedField<T> {
+    // (undocumented)
+    readonly comodel: C;
+}
 
 // @public
 export function resolveInstallation(catalog: ModuleCatalog, requested: Iterable<string>, installed?: Iterable<string>): string[];
@@ -387,6 +553,12 @@ export class RevokedModuleError extends SocleError {
     constructor(moduleName: string, reason: string);
     // (undocumented)
     readonly reason: string;
+}
+
+// @public
+export interface SelectionField<K extends string> extends TypedField<'selection'> {
+    // (undocumented)
+    readonly selection: readonly (readonly [K, string])[];
 }
 
 // @public
@@ -448,6 +620,12 @@ export interface TrustStore {
     keyIds(): readonly string[];
     // (undocumented)
     marketplaceKey(keyId: string): SigningPublicKey | undefined;
+}
+
+// @public
+export interface TypedField<T extends FieldType> extends FieldDefinition {
+    // (undocumented)
+    readonly type: T;
 }
 
 // @public (undocumented)
