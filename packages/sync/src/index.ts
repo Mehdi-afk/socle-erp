@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 export { decideConflict } from './conflict.js';
+export { EMPTY_DEVICE_STATE, memoryDeviceStateStore, openDevice, recordKey } from './device.js';
+export type {
+  Device,
+  DeviceOptions,
+  DeviceState,
+  DeviceStateStore,
+  SyncReport,
+  SyncTransport,
+} from './device.js';
 export type { ConflictDecision, LocalChange, RemoteState } from './conflict.js';
 export {
   deviceAction,
@@ -18,7 +27,13 @@ export {
   retryDelayMs,
 } from './outbox.js';
 export type { OutboxState, RejectedMutation } from './outbox.js';
-export { parseMutation, parsePullResponse, signMutation, verifyMutation } from './protocol.js';
+export {
+  parseMutation,
+  parsePullResponse,
+  parsePushResults,
+  signMutation,
+  verifyMutation,
+} from './protocol.js';
 export type {
   Mutation,
   MutationOp,

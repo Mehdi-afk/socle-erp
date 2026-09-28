@@ -317,7 +317,9 @@ async function replay(
     decision.reason,
   );
   await backend.remember(mutation, applied);
-  return applied;
+  if (mutation.op === 'unlink') return applied;
+  const versions = (await backend.fieldVersions(meta, [mutation.recordId])).get(mutation.recordId);
+  return versions ? { ...applied, fieldVersions: { ...versions } } : applied;
 }
 
 /**

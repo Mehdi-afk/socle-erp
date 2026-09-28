@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  # Acceptance tests of each phase: a package of their own, since they use every other package.
+  - packages/testing/acceptance
   - modules/*
 
 # Supply chain (ARCHITECTURE.md §9.4)
