@@ -56,10 +56,7 @@ export function normalizeValue(name: string, definition: FieldDefinition, value:
     if (typeof value !== 'boolean') fail('expected a boolean');
     return value;
   }
-  if (value === null) {
-    if (definition.type === 'one2many' || definition.type === 'many2many') return [];
-    return null;
-  }
+  if (value === null) return emptyValue(definition);
   switch (definition.type) {
     case 'char':
     case 'text':
@@ -137,13 +134,17 @@ export function normalizeValue(name: string, definition: FieldDefinition, value:
 }
 
 /**
- * The empty value of a field type.
+ * The empty value of a field type: `false`, `0` for integers and money (as in Odoo, so that
+ * totals never meet a null), `[]` for x2many, `null` otherwise.
  * @public
  */
 export function emptyValue(definition: FieldDefinition): unknown {
   switch (definition.type) {
     case 'boolean':
       return false;
+    case 'integer':
+    case 'monetary':
+      return 0;
     case 'one2many':
     case 'many2many':
       return [];

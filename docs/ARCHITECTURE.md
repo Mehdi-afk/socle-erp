@@ -316,9 +316,11 @@ export default extendModel('sale.order', {
   },
 });
 
-// Typage : le compilateur connaît le nouveau champ partout
+// Typage : le compilateur connaît le nouveau champ partout (ADR 009 : clé = nom du module,
+// car plusieurs modules peuvent étendre le même modèle ; le module qui DÉFINIT sale.order
+// déclare, lui, `interface ModelFields { 'sale.order': FieldsOf<typeof saleOrder> }`)
 declare module '@socle/framework' {
-  interface ModelFields { 'sale.order': { margin: Money } }
+  interface ModelExtensions { sale_margin: { 'sale.order': { margin: Money } } }
 }
 ```
 

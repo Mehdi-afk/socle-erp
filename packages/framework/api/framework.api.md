@@ -160,7 +160,7 @@ export interface DecimalOptions extends CommonFieldOptions {
 export function defineManifest(input: ManifestInput): ModuleManifest;
 
 // @public
-export function defineModel(input: ModelDefinitionInput): ModelDefinition;
+export function defineModel<const N extends string, const F extends FieldDefinitions = Record<never, never>>(input: TypedModelInput<N, F>): TypedModelDefinition<N, F>;
 
 // @public (undocumented)
 export class DependencyCycleError extends SocleError {
@@ -223,7 +223,7 @@ export class Environment {
     constructor(key: symbol, options: EnvironmentOptions, state: unknown, su: boolean);
     get companyId(): string | null;
     flush(): Promise<void>;
-    model(name: string): Recordset;
+    model<M extends string>(name: M): RecordsetOf<M>;
     // (undocumented)
     readonly registry: ModelRegistry;
     // (undocumented)
@@ -252,7 +252,15 @@ export interface EnvironmentOptions {
 }
 
 // @public
-export function extendModel(name: string, input: ModelExtensionInput): ModelExtension;
+export function extendModel<const N extends string, const F extends FieldDefinitions = Record<never, never>>(name: N, input: TypedExtensionInput<N, F>): ModelExtension;
+
+// @public
+export type ExtensionClass<N extends string, F> = new (env: Environment, ids: readonly string[]) => RecordsetOf<N> & FieldValues<F>;
+
+// @public
+export type ExtensionFieldsOf<M extends string> = ({
+    [Module in keyof ModelExtensions]: M extends keyof ModelExtensions[Module] ? (fields: ModelExtensions[Module][M]) => void : never;
+}[keyof ModelExtensions] extends (fields: infer I) => void ? I : never) extends infer All ? [All] extends [never] ? unknown : All : never;
 
 // @public
 export const f: Readonly<{
@@ -310,6 +318,9 @@ export interface FieldDefinition extends CommonFieldOptions {
 }
 
 // @public
+export type FieldDefinitions = Readonly<Record<string, FieldDefinition>>;
+
+// @public
 export class FieldNotLoadedError extends SocleError {
     constructor(model: string, field: string);
 }
@@ -318,7 +329,28 @@ export class FieldNotLoadedError extends SocleError {
 export type FieldResolver = (model: string, field: string) => FieldDefinition | undefined;
 
 // @public
+export type FieldsOf<D> = D extends TypedModelDefinition<string, infer F> ? FieldValues<F> : never;
+
+// @public
+export type FieldsOfModel<M extends string> = (M extends keyof ModelFields ? ModelFields[M] : unknown) & ExtensionFieldsOf<M>;
+
+// @public
 export type FieldType = 'char' | 'text' | 'html' | 'integer' | 'decimal' | 'monetary' | 'boolean' | 'date' | 'datetime' | 'selection' | 'many2one' | 'one2many' | 'many2many' | 'binary' | 'json' | 'reference';
+
+// @public
+export type FieldValue<D> = D extends {
+    readonly type: 'boolean';
+} ? boolean : D extends {
+    readonly type: 'integer' | 'monetary';
+} ? number : D extends {
+    readonly type: 'many2one' | 'one2many' | 'many2many';
+    readonly comodel: infer C extends string;
+} ? RecordsetOf<C> : D extends {
+    readonly type: 'selection';
+    readonly selection: readonly (readonly [infer K, string])[];
+} ? K | null : D extends {
+    readonly type: 'json';
+} ? unknown : string | null;
 
 // @public
 export class FieldValueError extends SocleError {
@@ -326,6 +358,11 @@ export class FieldValueError extends SocleError {
     // (undocumented)
     readonly field: string;
 }
+
+// @public
+export type FieldValues<F> = {
+    -readonly [K in keyof F]: FieldValue<F[K]>;
+};
 
 // @public
 export function findRevocation(list: RevocationList, subject: RevocationSubject): RevocationEntry | undefined;
@@ -539,6 +576,14 @@ export interface ModelExtensionInput {
 }
 
 // @public
+export interface ModelExtensions {
+}
+
+// @public
+export interface ModelFields {
+}
+
+// @public
 export interface ModelMeta {
     // (undocumented)
     readonly abstract: boolean;
@@ -668,6 +713,9 @@ export interface MonetaryOptions extends CommonFieldOptions {
 }
 
 // @public
+export type Money = number;
+
+// @public
 export function normalizeValue(name: string, definition: FieldDefinition, value: unknown): unknown;
 
 // @public
@@ -728,6 +776,9 @@ export function parseManifest(value: unknown): ModuleManifest;
 export function parseOrder(model: string, order: string, fields: ReadonlyMap<string, FieldDefinition>): OrderTerm[];
 
 // @public
+export type RecordClass<N extends string, F> = new (env: Environment, ids: readonly string[]) => Recordset & FieldValues<F> & ExtensionFieldsOf<N>;
+
+// @public
 export class Recordset {
     // (undocumented)
     [Symbol.iterator](): Iterator<this>;
@@ -767,6 +818,9 @@ export type RecordsetConstructor = new (env: Environment, ids: readonly string[]
 export class RecordsetError extends SocleError {
     constructor(message: string);
 }
+
+// @public
+export type RecordsetOf<M extends string> = Recordset & FieldsOfModel<M>;
 
 // @public
 export type RecordValues = Readonly<Record<string, unknown>>;
@@ -964,9 +1018,38 @@ export interface TrustStore {
 }
 
 // @public
+export interface TypedExtensionInput<N extends string, F extends FieldDefinitions> extends Omit<ModelExtensionInput, 'fields' | 'methods' | 'serverMethods'> {
+    // (undocumented)
+    readonly fields?: F | undefined;
+    // (undocumented)
+    readonly methods?: ((Base: ExtensionClass<N, F>) => RecordsetConstructor) | undefined;
+    // (undocumented)
+    readonly serverMethods?: ((Base: ExtensionClass<N, F>) => RecordsetConstructor) | undefined;
+}
+
+// @public
 export interface TypedField<T extends FieldType> extends FieldDefinition {
     // (undocumented)
     readonly type: T;
+}
+
+// @public
+export interface TypedModelDefinition<N extends string, F> extends ModelDefinition {
+    readonly fieldTypes?: F;
+    // (undocumented)
+    readonly name: N;
+}
+
+// @public
+export interface TypedModelInput<N extends string, F extends FieldDefinitions> extends Omit<ModelDefinitionInput, 'name' | 'fields' | 'methods' | 'serverMethods'> {
+    // (undocumented)
+    readonly fields?: F | undefined;
+    // (undocumented)
+    readonly methods?: ((Base: RecordClass<N, F>) => RecordsetConstructor) | undefined;
+    // (undocumented)
+    readonly name: N;
+    // (undocumented)
+    readonly serverMethods?: ((Base: RecordClass<N, F>) => RecordsetConstructor) | undefined;
 }
 
 // @public
