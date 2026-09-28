@@ -143,6 +143,29 @@ describe('phase 1 acceptance', () => {
     await expectConverged(a, b, c);
   });
 
+  // Regression (found by the property below, seed 1878859514): a note created offline on a
+  // partner deleted meanwhile was answered as a temporary failure; the device retried it
+  // forever and never converged. It is now refused, archived and dropped from the replica.
+  it('refuses a change that references a record deleted meanwhile, and converges', async () => {
+    const a = await tenant.device('ref-a');
+    const b = await tenant.device('ref-b');
+    const partner = await a.env().model('acc.partner').create({ name: 'Short-lived' });
+    await syncAll(a, b);
+
+    await a.env().model('acc.partner').browse(partner.ids).unlink();
+    await b
+      .env()
+      .model('acc.note')
+      .create({ partnerId: partner.ids[0] as string, body: 'too late' });
+    await a.engine.sync();
+    const report = await b.engine.sync();
+    expect(report.rejected).toHaveLength(1);
+    expect(report.retryLater).toBe(false);
+    expect(b.engine.state().outbox.pending).toEqual([]);
+    await syncAll(a, b);
+    await expectConverged(a, b);
+  });
+
   it('converges whatever the offline edits and the synchronisation order', async () => {
     type Op =
       | { kind: 'create'; device: number; name: string; vip: boolean }

@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { applySchema } from './apply.js';
 import type { Executor } from './database.js';
 import { SchemaError } from './errors.js';
-import { createPgStorage } from './storage.js';
+import { createPgStorage, translateCommitError } from './storage.js';
 import { useTestDatabases } from './test-support.js';
 
 const partner = defineModel({
@@ -175,6 +175,30 @@ describe('ORM on PostgreSQL', () => {
         ]);
       }),
     ).rejects.toThrow(/foreign key/);
+  });
+
+  // Regression: a reference to a record deleted meanwhile (a device offline) was reported as a
+  // temporary failure, so the device retried it forever and never converged.
+  it('turns a foreign key violation at commit into a validation error', async () => {
+    const db = await databases.create();
+    await applySchema(db, registry);
+    const failure: unknown = await db
+      .transaction()
+      .execute(async (trx) => {
+        await createPgStorage(trx, registry).insert(registry.get('e2e.line'), [
+          {
+            id: '0190a000-0000-7000-8000-000000000003',
+            values: { orderId: '0190a000-0000-7000-8000-000000000004', amount: 1 },
+          },
+        ]);
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(translateCommitError(failure)).toBeInstanceOf(ValidationError);
+    const other = new Error('connection lost');
+    expect(translateCommitError(other)).toBe(other);
   });
 });
 

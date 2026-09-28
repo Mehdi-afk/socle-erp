@@ -44,5 +44,5 @@ export { applyRowSecurity, buildRowSecurity } from './rls.js';
 export type { RowPolicy, RowSecurityPlan } from './rls.js';
 export { createPgSession, SYSTEM_ACTOR } from './session.js';
 export type { PgSession } from './session.js';
-export { createPgStorage } from './storage.js';
+export { createPgStorage, translateCommitError } from './storage.js';
 export { createPgSyncBackend, deviceStatus, registerDevice, revokeDevice } from './sync-backend.js';

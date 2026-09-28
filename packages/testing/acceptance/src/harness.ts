@@ -15,6 +15,7 @@ import {
   type DomainNode,
   type Environment,
   type ModelRegistry,
+  type SecurityPolicy,
   type Storage,
   type UserContext,
 } from '@socle/framework';
@@ -93,11 +94,26 @@ async function readAll(storage: Storage, registry: ModelRegistry): Promise<Snaps
   return snapshot;
 }
 
+export interface InstalledTenant {
+  readonly connectionString: string;
+  readonly serverRegistry: ModelRegistry;
+  readonly clientRegistry: ModelRegistry;
+  readonly security: SecurityPolicy;
+  /** A pool on the tenant database (to check it directly). */
+  readonly db: Executor;
+}
+
 /**
- * Creates a tenant with the CLI (`db create`, `module install acc_ext`: acc_base comes first as
- * its dependency), a user, and the HTTP server.
+ * A tenant database created and filled by the CLI (`db create`, `module install acc_ext`:
+ * acc_base comes first as its dependency), with one user.
  */
-export async function createTenant(pgUrl: string): Promise<Tenant> {
+export async function installTenant(
+  pgUrl: string,
+  user: { readonly login: string; readonly password: string } = {
+    login: 'alice@acme.test',
+    password: 'alice-pass',
+  },
+): Promise<InstalledTenant> {
   const name = `acc${randomBytes(4).toString('hex')}`;
   const cli = async (...argv: string[]): Promise<void> => {
     const lines: string[] = [];
@@ -126,14 +142,74 @@ export async function createTenant(pgUrl: string): Promise<Tenant> {
     db,
     {
       id: ALICE.id,
-      login: 'alice@acme.test',
-      password: 'alice-pass',
+      login: user.login,
+      password: user.password,
       groupIds: [...ALICE.groupIds],
       companyIds: [],
       companyId: null,
     },
     FAST,
   );
+  return { connectionString, serverRegistry, clientRegistry, security, db };
+}
+
+/** The HTTP server in front of `tenants` (subdomain → tenant), for tests. */
+export function testServer(tenantsByName: Readonly<Record<string, InstalledTenant>>) {
+  const tenants = createTenantDirectory({
+    resolve: (tenant) => {
+      const found = Object.hasOwn(tenantsByName, tenant) ? tenantsByName[tenant] : undefined;
+      return Promise.resolve(
+        found
+          ? {
+              connectionString: found.connectionString,
+              registry: found.serverRegistry,
+              security: found.security,
+            }
+          : undefined,
+      );
+    },
+  });
+  const app = buildServer({
+    baseDomain: 'erp.test',
+    tenants,
+    logger: false,
+    session: { idleMs: 3_600_000, absoluteMs: 86_400_000, maxFailures: 5, cost: FAST },
+    rateLimit: { capacity: 1_000_000, refillPerSecond: 1_000_000 },
+  });
+  const inject = (
+    host: string,
+    method: 'GET' | 'POST',
+    url: string,
+    cookie?: string,
+    body?: unknown,
+  ) =>
+    app.inject({
+      method,
+      url,
+      headers: { host: `${host}.erp.test`, ...(cookie ? { cookie } : {}) },
+      ...(body === undefined ? {} : { payload: body as Record<string, unknown> }),
+    });
+  const signIn = async (host: string, login: string, password: string): Promise<string> => {
+    const response = await inject(host, 'POST', '/auth/login', undefined, { login, password });
+    expect(response.statusCode, response.body).toBe(200);
+    return String(response.headers['set-cookie']).split(';')[0] ?? '';
+  };
+  return {
+    inject,
+    signIn,
+    async close() {
+      await app.close();
+      await tenants.close();
+    },
+  };
+}
+
+/**
+ * Creates a tenant with the CLI, a user, and the HTTP server in front of it (`acme.erp.test`).
+ */
+export async function createTenant(pgUrl: string): Promise<Tenant> {
+  const { connectionString, serverRegistry, clientRegistry, security, db } =
+    await installTenant(pgUrl);
 
   const tenants = createTenantDirectory({
     resolve: (tenant) =>
