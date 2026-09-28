@@ -4,6 +4,12 @@ import type { LocalizedText } from '../registry/manifest.js';
 import type { Environment } from './environment.js';
 import type { FieldDefinition } from './fields.js';
 import type { Recordset } from './recordset.js';
+import type {
+  ExtensionClass,
+  FieldDefinitions,
+  RecordClass,
+  TypedModelDefinition,
+} from './typing.js';
 
 /**
  * The constructor of a model's records (see {@link Recordset}); models extend it through
@@ -148,16 +154,49 @@ function checkModelName(name: string): void {
 }
 
 /**
+ * What `defineModel` accepts: the fields `F` are inferred, and the `Base` class of `methods` /
+ * `serverMethods` exposes them with their types.
+ * @public
+ */
+export interface TypedModelInput<N extends string, F extends FieldDefinitions> extends Omit<
+  ModelDefinitionInput,
+  'name' | 'fields' | 'methods' | 'serverMethods'
+> {
+  readonly name: N;
+  readonly fields?: F | undefined;
+  readonly methods?: ((Base: RecordClass<N, F>) => RecordsetConstructor) | undefined;
+  readonly serverMethods?: ((Base: RecordClass<N, F>) => RecordsetConstructor) | undefined;
+}
+
+/**
+ * What `extendModel` accepts: the `Base` class exposes every known field of the model plus the
+ * fields `F` added by the extension.
+ * @public
+ */
+export interface TypedExtensionInput<N extends string, F extends FieldDefinitions> extends Omit<
+  ModelExtensionInput,
+  'fields' | 'methods' | 'serverMethods'
+> {
+  readonly fields?: F | undefined;
+  readonly methods?: ((Base: ExtensionClass<N, F>) => RecordsetConstructor) | undefined;
+  readonly serverMethods?: ((Base: ExtensionClass<N, F>) => RecordsetConstructor) | undefined;
+}
+
+/**
  * Declares a new model.
  * @public
  */
-export function defineModel(input: ModelDefinitionInput): ModelDefinition {
+export function defineModel<
+  const N extends string,
+  // eslint-disable-next-line @typescript-eslint/no-generated-empty-object-type -- no fields by default
+  const F extends FieldDefinitions = Record<never, never>,
+>(input: TypedModelInput<N, F>): TypedModelDefinition<N, F> {
   checkModelName(input.name);
   checkFields(input.name, input.fields);
   if (input.abstract && (input.inherit !== undefined || input.inherits !== undefined)) {
     throw new ModelDefinitionError(`Abstract model "${input.name}" can only use mixins.`);
   }
-  return Object.freeze({ ...input, kind: 'define' });
+  return Object.freeze({ ...(input as ModelDefinitionInput), name: input.name, kind: 'define' });
 }
 
 /**
@@ -165,8 +204,12 @@ export function defineModel(input: ModelDefinitionInput): ModelDefinition {
  * overrides methods while reusing the original behaviour through `super`.
  * @public
  */
-export function extendModel(name: string, input: ModelExtensionInput): ModelExtension {
+export function extendModel<
+  const N extends string,
+  // eslint-disable-next-line @typescript-eslint/no-generated-empty-object-type -- no fields by default
+  const F extends FieldDefinitions = Record<never, never>,
+>(name: N, input: TypedExtensionInput<N, F>): ModelExtension {
   checkModelName(name);
   checkFields(name, input.fields);
-  return Object.freeze({ ...input, kind: 'extend', name });
+  return Object.freeze({ ...(input as ModelExtensionInput), kind: 'extend', name });
 }

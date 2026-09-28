@@ -52,6 +52,8 @@ export type {
   ModelExtension,
   ModelExtensionInput,
   RecordsetConstructor,
+  TypedExtensionInput,
+  TypedModelInput,
   UniqueConstraint,
 } from './model.js';
 export { buildModelRegistry, parseOrder } from './model-registry.js';
@@ -65,3 +67,18 @@ export type {
 export { Recordset, RECORDSET_MEMBERS } from './recordset.js';
 export type { RecordValues, SearchParams } from './recordset.js';
 export type { SearchOptions, Storage, StoredValues } from './storage.js';
+export type {
+  ExtensionClass,
+  ExtensionFieldsOf,
+  FieldDefinitions,
+  FieldsOf,
+  FieldsOfModel,
+  FieldValue,
+  FieldValues,
+  ModelExtensions,
+  ModelFields,
+  Money,
+  RecordClass,
+  RecordsetOf,
+  TypedModelDefinition,
+} from './typing.js';

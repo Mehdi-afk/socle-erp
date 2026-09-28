@@ -20,6 +20,7 @@ import {
 } from './model-registry.js';
 import { Recordset, type RecordValues, type SearchParams } from './recordset.js';
 import type { Storage } from './storage.js';
+import type { RecordsetOf } from './typing.js';
 import { emptyValue, isRecordId, normalizeValue } from './values.js';
 
 /**
@@ -169,10 +170,10 @@ export class Environment {
   }
 
   /** An empty recordset of a model, to search, browse or create. */
-  model(name: string): Recordset {
+  model<M extends string>(name: M): RecordsetOf<M> {
     const meta = this.registry.get(name);
     if (meta.abstract) throw new RecordsetError(`"${name}" is abstract.`);
-    return new meta.recordClass(this, []);
+    return new meta.recordClass(this, []) as RecordsetOf<M>;
   }
 
   /**
