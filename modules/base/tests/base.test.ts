@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import manifest from '../manifest.js';
 import companyScoped from '../models/company-scoped.js';
 import configParameter from '../models/ir-config-parameter.js';
+import sequence, { formatSequence, localDate } from '../models/ir-sequence.js';
 import accessAndRules from '../models/ir-model-access.js';
 import company from '../models/res-company.js';
 import countries from '../models/res-country.js';
@@ -34,6 +35,7 @@ const models: ModelDefinition[] = [
   ...currencies,
   ...countries,
   configParameter,
+  sequence,
 ];
 const security = { module: manifest.name, groups, access, rules };
 
@@ -78,5 +80,35 @@ describe('base', () => {
       'base.company_allowed',
     ]);
     expect(securityRecords(security, () => false)).toEqual([]);
+  });
+});
+
+describe('sequence numbers', () => {
+  it('format prefix, zero-padded number and suffix with date variables', () => {
+    const date = { year: '2026', month: '09', day: '28' };
+    expect(formatSequence({ prefix: 'FAC/{YYYY}/', suffix: '', padding: 5 }, 42, date)).toBe(
+      'FAC/2026/00042',
+    );
+    expect(formatSequence({ prefix: '{YY}{MM}{DD}-', suffix: '-DZ', padding: 0 }, 7, date)).toBe(
+      '260928-7-DZ',
+    );
+    expect(formatSequence({ prefix: '', suffix: '', padding: 3 }, 12345, date)).toBe('12345');
+    expect(() => formatSequence({ prefix: '', suffix: '', padding: 3 }, -1, date)).toThrow();
+    expect(() => formatSequence({ prefix: '', suffix: '', padding: 3 }, 1.5, date)).toThrow();
+  });
+
+  it('take the date in the user time zone', () => {
+    // 23:30 UTC on 31 December: already 1 January in Algiers (UTC+1), still 31 in UTC.
+    expect(localDate('2026-12-31T23:30:00.000Z', 'Africa/Algiers')).toEqual({
+      year: '2027',
+      month: '01',
+      day: '01',
+    });
+    expect(localDate('2026-12-31T23:30:00.000Z', 'UTC')).toEqual({
+      year: '2026',
+      month: '12',
+      day: '31',
+    });
+    expect(localDate('2026-12-31T23:30:00.000Z', 'Not/AZone').day).toBe('31');
   });
 });

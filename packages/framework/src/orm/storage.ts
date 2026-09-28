@@ -55,4 +55,17 @@ export interface Storage {
   delete(model: ModelMeta, ids: readonly string[]): Promise<void>;
   /** The same storage acting for `actor` (optional: storages without row-level security ignore it). */
   as?(actor: StorageActor): Storage;
+  /**
+   * Locks the rows until the end of the transaction, so that concurrent transactions changing
+   * the same records wait for each other (server storages; e.g. gapless numbering).
+   */
+  lock?(model: ModelMeta, ids: readonly string[]): Promise<void>;
+  /**
+   * Next value of a named counter. Never blocks and is never rolled back: values may be lost
+   * (gaps), never given twice. Created at `start` on first use.
+   */
+  nextValue?(
+    counter: string,
+    options: { readonly start: number; readonly step: number },
+  ): Promise<number>;
 }

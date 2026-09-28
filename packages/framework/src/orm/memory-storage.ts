@@ -40,6 +40,8 @@ export interface MemoryStorage extends Storage {
  */
 export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
   let tables = new Map<string, Map<string, Row>>();
+  // Counters are never rolled back (like database sequences).
+  const counters = new Map<string, number>();
 
   const table = (model: string): Map<string, Row> => {
     let rows = tables.get(model);
@@ -135,6 +137,15 @@ export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
     );
 
   return {
+    // One process, no concurrent transaction: nothing to wait for.
+    lock: () => Promise.resolve(),
+    nextValue(counter, options) {
+      const value = counters.has(counter)
+        ? (counters.get(counter) as number) + options.step
+        : options.start;
+      counters.set(counter, value);
+      return Promise.resolve(value);
+    },
     search(meta: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]> {
       const rows = [...table(meta.name).values()].filter((row) => evaluate(meta.name, row, where));
       rows.sort((a, b) => compare(meta, a, b, options.order ?? meta.order));

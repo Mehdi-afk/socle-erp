@@ -319,6 +319,10 @@ export class Environment {
     get companyId(): string | null;
     flush(): Promise<void>;
     model<M extends string>(name: M): RecordsetOf<M>;
+    nextValue(counter: string, options?: {
+        readonly start?: number;
+        readonly step?: number;
+    }): Promise<number>;
     // (undocumented)
     readonly registry: ModelRegistry;
     // (undocumented)
@@ -986,6 +990,7 @@ export class Recordset {
     readonly ids: readonly string[];
     // (undocumented)
     get length(): number;
+    lockForUpdate(): Promise<void>;
     mapped(field: string): unknown[];
     get model(): string;
     prefetch(paths?: readonly string[]): Promise<this>;
@@ -1242,6 +1247,11 @@ export interface Storage {
         readonly id: string;
         readonly values: StoredValues;
     }[]): Promise<void>;
+    lock?(model: ModelMeta, ids: readonly string[]): Promise<void>;
+    nextValue?(counter: string, options: {
+        readonly start: number;
+        readonly step: number;
+    }): Promise<number>;
     read(model: ModelMeta, ids: readonly string[], fields: readonly string[]): Promise<ReadonlyMap<string, StoredValues>>;
     // (undocumented)
     search(model: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]>;

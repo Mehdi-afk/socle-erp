@@ -125,6 +125,15 @@ export class Recordset {
     return runtime(this.env).prefetch(this, paths);
   }
 
+  /**
+   * Locks the records until the end of the transaction (server only): another transaction
+   * locking them waits. Pending writes are flushed first and the records are read again after.
+   * @throws {@link ServerOnlyError} on the client
+   */
+  lockForUpdate(): Promise<void> {
+    return runtime(this.env).lock(this);
+  }
+
   /** Plain values of the records (relational fields as ids), e.g. for the RPC layer. */
   read(fields?: readonly string[]): Promise<Record<string, unknown>[]> {
     return runtime(this.env).read(this, fields);
