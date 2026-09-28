@@ -19,6 +19,7 @@
     "semver": "^7.8.5"
   },
   "devDependencies": {
+    "@socle/testing": "workspace:*",
     "@types/node": "^24.13.6",
     "@types/semver": "^7.8.0"
   }
