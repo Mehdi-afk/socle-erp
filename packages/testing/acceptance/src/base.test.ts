@@ -158,4 +158,65 @@ describe('module base', () => {
     });
     expect(c2).not.toBe(c1);
   });
+
+  it('numbers without gaps under concurrency, and with gaps in standard mode', async () => {
+    const root: UserContext = {
+      id: 'root',
+      groupIds: ['base.group_system'],
+      companyIds: [],
+      companyId: null,
+      lang: 'fr',
+      tz: 'Africa/Algiers',
+    };
+    type Sequences = { nextByCode(code: string): Promise<string> };
+    const next = (code: string) =>
+      inTransaction(root, (env) =>
+        (env.model('ir.sequence') as unknown as Sequences).nextByCode(code),
+      );
+    await inTransaction(root, (env) =>
+      env.model('ir.sequence').create([
+        { code: 'test.gapless', prefix: 'F{YYYY}-', padding: 4, implementation: 'no_gap' },
+        { code: 'test.standard', prefix: 'S', padding: 3 },
+      ]),
+    );
+    const year = new Date().getUTCFullYear();
+
+    // A takes a number and keeps its transaction open; B asks meanwhile. With the row lock, B
+    // waits for A's commit and gets the next number; without it, B would read the old counter.
+    let taken!: () => void;
+    const aHasTaken = new Promise<void>((resolve) => {
+      taken = resolve;
+    });
+    const a = inTransaction(root, async (env) => {
+      const number = await (env.model('ir.sequence') as unknown as Sequences).nextByCode(
+        'test.gapless',
+      );
+      taken();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return number;
+    });
+    await aHasTaken;
+    const b = next('test.gapless');
+    expect([await a, await b]).toEqual([`F${String(year)}-0001`, `F${String(year)}-0002`]);
+
+    // A transaction that fails gives its number back (no gap)…
+    await expect(
+      inTransaction(root, async (env) => {
+        await (env.model('ir.sequence') as unknown as Sequences).nextByCode('test.gapless');
+        throw new Error('the invoice could not be posted');
+      }),
+    ).rejects.toThrow('could not be posted');
+    expect(await next('test.gapless')).toMatch(/-0003$/);
+
+    // …while the standard mode never blocks and loses it (a gap).
+    expect(await next('test.standard')).toBe('S001');
+    await expect(
+      inTransaction(root, async (env) => {
+        await (env.model('ir.sequence') as unknown as Sequences).nextByCode('test.standard');
+        throw new Error('rolled back');
+      }),
+    ).rejects.toThrow('rolled back');
+    expect(await next('test.standard')).toBe('S003');
+    await expect(next('test.missing')).rejects.toThrow(/No active sequence/);
+  });
 });

@@ -15,6 +15,8 @@ import {
   TECHNICAL_FIELDS,
 } from '@socle/framework';
 import { sql, type RawBuilder } from 'kysely';
+import { createHash } from 'node:crypto';
+
 import pg from 'pg';
 
 import { DomainCompiler } from './compile.js';
@@ -153,6 +155,30 @@ export function createPgStorage(
       }
     }
   };
+
+  async function lock(meta: ModelMeta, ids: readonly string[]): Promise<void> {
+    const wanted = [...new Set(ids.filter(isRecordId))];
+    if (wanted.length === 0) return;
+    // Ordered by id: two transactions locking overlapping sets cannot deadlock.
+    await sql`select id from ${table(meta)} where id = any(${wanted}::uuid[]) order by id for update`.execute(
+      executor,
+    );
+  }
+
+  async function nextValue(
+    counter: string,
+    options: { readonly start: number; readonly step: number },
+  ): Promise<number> {
+    // A PostgreSQL sequence per counter: outside the transaction's rollback, never blocking.
+    const name = identifier(
+      `socle_ctr_${createHash('sha256').update(counter).digest('hex').slice(0, 40)}`,
+    );
+    await sql`create sequence if not exists ${sql.id(name)} start with ${sql.lit(options.start)} increment by ${sql.lit(options.step)} minvalue ${sql.lit(Math.min(options.start, 1))}`.execute(
+      executor,
+    );
+    const result = await sql<{ value: string }>`select nextval(${name}) as value`.execute(executor);
+    return Number(result.rows[0]?.value);
+  }
 
   const storage: Storage = {
     async search(meta: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]> {
@@ -318,6 +344,9 @@ export function createPgStorage(
         );
       });
     },
+
+    lock,
+    nextValue,
   };
 
   // ─── acting user (row-level security) ─────────────────────────────────────────────────
@@ -335,6 +364,8 @@ export function createPgStorage(
     insert: async (meta, rows) => (await actAs(actor), storage.insert(meta, rows)),
     update: async (meta, id, values) => (await actAs(actor), storage.update(meta, id, values)),
     delete: async (meta, ids) => (await actAs(actor), storage.delete(meta, ids)),
+    lock: async (meta, ids) => (await actAs(actor), lock(meta, ids)),
+    nextValue,
     as,
   });
 

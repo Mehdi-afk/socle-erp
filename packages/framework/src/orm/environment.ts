@@ -189,6 +189,18 @@ export class Environment {
   flush(): Promise<void> {
     return runtime(this).flush();
   }
+
+  /**
+   * Next value of a named server counter (`start` on first use, then `+ step`). Never blocks,
+   * never rolled back: gaps are possible, duplicates never (server only).
+   * @throws {@link ServerOnlyError} on the client
+   */
+  nextValue(
+    counter: string,
+    options: { readonly start?: number; readonly step?: number } = {},
+  ): Promise<number> {
+    return runtime(this).nextValue(counter, options.start ?? 1, options.step ?? 1);
+  }
 }
 
 /**
@@ -277,6 +289,33 @@ export class Runtime {
 
   private now(): string {
     return this.options.now?.() ?? new Date().toISOString();
+  }
+
+  async lock(records: Recordset): Promise<void> {
+    if (this.registry.side === 'client')
+      throw new ServerOnlyError('Records can only be locked on the server.');
+    const meta = this.registry.get(records.model);
+    this.checkModel(meta.name, 'write');
+    await this.flush();
+    await this.checkRecords(meta, records.ids, 'write');
+    const storage = this.store();
+    if (!storage.lock) throw new RecordsetError('This storage cannot lock records.');
+    await storage.lock(meta, records.ids);
+    // Values read before the lock may be stale: read them again.
+    const cached = this.state.cache.get(meta.name);
+    for (const id of records.ids) cached?.delete(id);
+  }
+
+  async nextValue(counter: string, start: number, step: number): Promise<number> {
+    if (this.registry.side === 'client')
+      throw new ServerOnlyError('Counters are only available on the server.');
+    if (!/^[a-z][a-z0-9._:-]{0,127}$/.test(counter))
+      throw new RecordsetError(`Invalid counter name "${counter}".`);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(step) || step === 0)
+      throw new RecordsetError('A counter needs integer start and non-zero integer step.');
+    const storage = this.store();
+    if (!storage.nextValue) throw new RecordsetError('This storage has no counters.');
+    return storage.nextValue(counter, { start, step });
   }
 
   private newId(): string {
