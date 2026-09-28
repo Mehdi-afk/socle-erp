@@ -18,6 +18,24 @@ export const SCHEMA_TABLE = 'socle_schema';
 /** Table of installed modules and their versions (ARCHITECTURE.md §4.4, §4.7): reserved. */
 export const MODULE_TABLE = 'ir_module';
 
+/**
+ * Synchronisation bookkeeping (ARCHITECTURE.md §6): version sequence, tombstones, registered
+ * devices, processed mutations and archived losing versions. Reserved names.
+ */
+export const SYNC_TABLES = {
+  sequence: 'socle_version',
+  tombstone: 'socle_tombstone',
+  device: 'socle_device',
+  mutation: 'socle_mutation',
+  archive: 'socle_archive',
+} as const;
+
+/**
+ * Per-field versions of a record (JSON object field → version), the base of conflict
+ * detection. A technical column of every model table, managed by the storage.
+ */
+export const FIELD_VERSIONS_COLUMN = 'field_versions';
+
 /** PostgreSQL types used by the ORM. */
 export type ColumnType =
   'uuid' | 'text' | 'bigint' | 'integer' | 'numeric' | 'boolean' | 'date' | 'timestamptz' | 'jsonb';
@@ -27,7 +45,7 @@ export interface ColumnSchema {
   readonly type: ColumnType;
   readonly notNull: boolean;
   /** Default for existing rows when the column is added (the field's empty value). */
-  readonly default?: false | 0 | undefined;
+  readonly default?: false | 0 | 'empty-object' | undefined;
   /** Kept in the database although no installed model uses it any more (never dropped automatically). */
   readonly orphan?: true | undefined;
 }
@@ -194,6 +212,18 @@ function modelTable(registry: ModelRegistry, meta: ModelMeta): TableSchema[] {
     }),
   }));
 
+  if (columns.some((column) => column.name === FIELD_VERSIONS_COLUMN)) {
+    throw new SchemaError(`"${meta.name}": the column "${FIELD_VERSIONS_COLUMN}" is reserved.`);
+  }
+  columns.push({
+    name: FIELD_VERSIONS_COLUMN,
+    type: 'jsonb',
+    notNull: true,
+    default: 'empty-object',
+  });
+  // Changes since a cursor are read by version.
+  indexes.push({ name: identifier(`${table}_version_idx`), columns: ['version'] });
+
   return [
     { name: table, owner: meta.name, columns, primaryKey: ['id'], foreignKeys, uniques, indexes },
     ...relations,
@@ -212,7 +242,7 @@ export function buildSchema(registry: ModelRegistry): DatabaseSchema {
     .flatMap((meta) => modelTable(registry, meta));
 
   const owners = new Map<string, string>(
-    [SCHEMA_TABLE, MODULE_TABLE].flatMap((reserved) => [
+    [SCHEMA_TABLE, MODULE_TABLE, ...Object.values(SYNC_TABLES)].flatMap((reserved) => [
       [reserved, 'the ORM'],
       [`${reserved}_pkey`, 'the ORM'],
     ]),

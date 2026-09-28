@@ -12,6 +12,7 @@ import {
   type Storage,
   type StorageActor,
   type StoredValues,
+  TECHNICAL_FIELDS,
 } from '@socle/framework';
 import { sql, type RawBuilder } from 'kysely';
 import pg from 'pg';
@@ -20,7 +21,8 @@ import { DomainCompiler } from './compile.js';
 import type { Executor } from './database.js';
 import { SchemaError } from './errors.js';
 import { columnName, identifier } from './naming.js';
-import { relationTable } from './schema.js';
+import { FIELD_VERSIONS_COLUMN, relationTable, SYNC_TABLES } from './schema.js';
+import { createPgSession, type PgSession } from './session.js';
 
 /** PostgreSQL accepts at most 65 535 parameters per statement; stay well below. */
 const MAX_PARAMETERS = 30_000;
@@ -39,7 +41,11 @@ function toParameter(definition: FieldDefinition, value: unknown): unknown {
  * The ORM storage on PostgreSQL (server side). `executor` is a pool or, for a request, the
  * transaction the whole request runs in.
  */
-export function createPgStorage(executor: Executor, registry: ModelRegistry): Storage {
+export function createPgStorage(
+  executor: Executor,
+  registry: ModelRegistry,
+  session: PgSession = createPgSession(executor),
+): Storage {
   const table = (meta: ModelMeta): RawBuilder<unknown> => sql.table(identifier(meta.table));
 
   const definitionOf = (meta: ModelMeta, field: string): FieldDefinition => {
@@ -84,6 +90,24 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
       throw translate(meta, error);
     }
   };
+
+  /** `count` new values of the version sequence, in order. */
+  const nextVersions = async (count: number): Promise<number[]> => {
+    const result = await sql<{
+      v: number;
+    }>`select nextval(${SYNC_TABLES.sequence}) as v from generate_series(1, ${count})`.execute(
+      executor,
+    );
+    return result.rows.map((row) => row.v);
+  };
+
+  /** Version of each business field written (technical fields are not synchronised as edits). */
+  const fieldVersions = (values: StoredValues, version: number): Record<string, number> =>
+    Object.fromEntries(
+      Object.keys(values)
+        .filter((field) => !TECHNICAL_FIELDS.includes(field))
+        .map((field) => [field, version]),
+    );
 
   const writeRelations = async (
     meta: ModelMeta,
@@ -196,20 +220,32 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
       const all = new Map<string, FieldDefinition>([['id', definitionOf(meta, 'id')]]);
       for (const row of rows)
         for (const [field, definition] of split(meta, row.values).columns)
-          all.set(field, definition);
+          if (field !== 'version') all.set(field, definition);
       const fields = [...all.keys()];
-      const perChunk = Math.max(1, Math.floor(MAX_PARAMETERS / fields.length));
+      const perChunk = Math.max(1, Math.floor(MAX_PARAMETERS / (fields.length + 2)));
       await guarded(meta, async () => {
+        // The server numbers every change (synchronisation cursor): the device's value is ignored.
+        const versions = await nextVersions(rows.length);
         for (let start = 0; start < rows.length; start += perChunk) {
-          const chunk = rows.slice(start, start + perChunk).map((row) => {
+          const chunk = rows.slice(start, start + perChunk).map((row, offset) => {
+            const version = versions[start + offset] as number;
             const values = fields.map((field) => {
               if (field === 'id') return sql`${row.id}`;
               if (!(field in row.values)) return sql`default`;
               return sql`${toParameter(all.get(field) as FieldDefinition, row.values[field])}`;
             });
+            values.push(
+              sql`${version}`,
+              sql`${JSON.stringify(fieldVersions(row.values, version))}::jsonb`,
+            );
             return sql`(${sql.join(values)})`;
           });
-          await sql`insert into ${table(meta)} (${sql.join(fields.map((field) => sql.id(columnName(field))))}) values ${sql.join(chunk)}`.execute(
+          const names = [
+            ...fields.map((field) => sql.id(columnName(field))),
+            sql.id('version'),
+            sql.id(FIELD_VERSIONS_COLUMN),
+          ];
+          await sql`insert into ${table(meta)} (${sql.join(names)}) values ${sql.join(chunk)}`.execute(
             executor,
           );
         }
@@ -222,10 +258,17 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
       const missing = new ValidationError(`Record ${id} of "${meta.name}" does not exist.`);
       if (!isRecordId(id)) throw missing;
       await guarded(meta, async () => {
-        if (columns.length > 0) {
-          const assignments = columns.map(
-            ([field, definition]) =>
-              sql`${sql.id(columnName(field))} = ${toParameter(definition, values[field])}`,
+        if (columns.length > 0 || Object.keys(values).length > 0) {
+          const [version] = await nextVersions(1);
+          const assignments = columns
+            .filter(([field]) => field !== 'version')
+            .map(
+              ([field, definition]) =>
+                sql`${sql.id(columnName(field))} = ${toParameter(definition, values[field])}`,
+            );
+          assignments.push(
+            sql`version = ${version}`,
+            sql`${sql.id(FIELD_VERSIONS_COLUMN)} = ${sql.id(FIELD_VERSIONS_COLUMN)} || ${JSON.stringify(fieldVersions(values, version as number))}::jsonb`,
           );
           const result =
             await sql`update ${table(meta)} set ${sql.join(assignments)} where id = ${id}::uuid`.execute(
@@ -247,33 +290,24 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
       if (wanted.length === 0) return;
       // Relation rows go with the record (ON DELETE CASCADE on both sides of every relation table).
       await guarded(meta, async () => {
-        await sql`delete from ${table(meta)} where id = any(${wanted}::uuid[])`.execute(executor);
+        const deleted = await sql<{
+          id: string;
+        }>`delete from ${table(meta)} where id = any(${wanted}::uuid[]) returning id`.execute(
+          executor,
+        );
+        if (deleted.rows.length === 0) return;
+        // Tombstones: devices learn about deletions at their next pull.
+        await sql`insert into ${sql.table(SYNC_TABLES.tombstone)} (model, record_id, version) select ${meta.name}, x, nextval(${SYNC_TABLES.sequence}) from unnest(${deleted.rows.map((row) => row.id)}::uuid[]) as x on conflict (model, record_id) do update set version = excluded.version, deleted_at = now()`.execute(
+          executor,
+        );
       });
     },
   };
 
   // ─── acting user (row-level security) ─────────────────────────────────────────────────
-  // The settings are transaction-local (`set_config(…, true)` = SET LOCAL) and only written
-  // when the actor changes, so a request pays one round trip per switch between the user
-  // and the superuser.
-  let current: string | undefined;
-
-  const actAs = async (actor: StorageActor): Promise<void> => {
-    const key = JSON.stringify(actor);
-    if (key === current) return;
-    if (!executor.isTransaction) {
-      throw new SchemaError(
-        'The ORM must run in a transaction on PostgreSQL (row-level security).',
-      );
-    }
-    const ids = [actor.userId, actor.companyId ?? '', ...actor.companyIds, ...actor.groupIds];
-    if (ids.some((id) => id.includes(',')))
-      throw new AccessError('Invalid identifier in the user context.');
-    await sql`select set_config('app.su', ${actor.su ? 'on' : 'off'}, true), set_config('app.user_id', ${actor.userId}, true), set_config('app.company_id', ${actor.companyId ?? ''}, true), set_config('app.company_ids', ${actor.companyIds.join(',')}, true), set_config('app.group_ids', ${actor.groupIds.join(',')}, true)`.execute(
-      executor,
-    );
-    current = key;
-  };
+  // The settings are transaction-local (SET LOCAL) and written by the shared session only when
+  // the actor changes: one round trip per switch between the user and the superuser.
+  const actAs = (actor: StorageActor): Promise<void> => session.actAs(actor);
 
   const as = (actor: StorageActor): Storage => ({
     search: async (meta, where, options) => (

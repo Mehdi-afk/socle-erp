@@ -195,9 +195,15 @@ importers:
 
   packages/orm-pg:
     dependencies:
+      '@socle/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@socle/framework':
         specifier: workspace:*
         version: link:../framework
+      '@socle/sync':
+        specifier: workspace:*
+        version: link:../sync
       kysely:
         specifier: ^0.29.6
         version: 0.29.6

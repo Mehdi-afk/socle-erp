@@ -28,4 +28,12 @@ export type {
   UnsignedMutation,
 } from './protocol.js';
 export { rebase } from './replica.js';
+export { pullChanges, pushMutations, rightsFingerprint, syncableFields } from './server.js';
+export type {
+  ArchiveEntry,
+  DeviceInfo,
+  RunInTransaction,
+  SyncBackend,
+  SyncContext,
+} from './server.js';
 export type { LocalRecord } from './replica.js';

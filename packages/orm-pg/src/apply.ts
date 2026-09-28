@@ -19,6 +19,7 @@ import {
   buildSchema,
   diffSchema,
   SCHEMA_TABLE,
+  SYNC_TABLES,
   type ColumnSchema,
   type DatabaseSchema,
   type SchemaOperation,
@@ -51,7 +52,7 @@ const tableSchema = z.object({
         'jsonb',
       ]),
       notNull: z.boolean(),
-      default: z.union([z.literal(false), z.literal(0)]).optional(),
+      default: z.union([z.literal(false), z.literal(0), z.literal('empty-object')]).optional(),
       orphan: z.literal(true).optional(),
     }),
   ),
@@ -88,7 +89,8 @@ export async function recordedSchema(trx: Transaction<Tables>): Promise<Database
 function columnBuilder(column: ColumnSchema) {
   return (builder: ColumnDefinitionBuilder): ColumnDefinitionBuilder => {
     let result = column.notNull ? builder.notNull() : builder;
-    if (column.default !== undefined) result = result.defaultTo(column.default);
+    if (column.default === 'empty-object') result = result.defaultTo(sql`'{}'::jsonb`);
+    else if (column.default !== undefined) result = result.defaultTo(column.default);
     return result;
   };
 }
@@ -150,6 +152,27 @@ async function run(trx: Transaction<Tables>, operation: SchemaOperation): Promis
   }
 }
 
+/** Creates the synchronisation bookkeeping objects if they do not exist yet. */
+async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
+  const t = SYNC_TABLES;
+  await sql`create sequence if not exists ${sql.id(t.sequence)}`.execute(trx);
+  await sql`create table if not exists ${sql.table(t.tombstone)} (model text not null, record_id uuid not null, version bigint not null, deleted_at timestamptz not null default now(), primary key (model, record_id))`.execute(
+    trx,
+  );
+  await sql`create index if not exists socle_tombstone_version_idx on ${sql.table(t.tombstone)} (version)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(t.device)} (id text primary key, user_id text not null, public_key text not null, status text not null check (status in ('active', 'revoked')), registered_at timestamptz not null default now(), last_seen_at timestamptz)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(t.mutation)} (mutation_id uuid primary key, device_id text not null, status text not null, conflict boolean not null, reason text not null, processed_at timestamptz not null default now())`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(t.archive)} (id bigint generated always as identity primary key, model text not null, record_id uuid not null, side text not null check (side in ('local', 'remote')), mutation_id uuid not null, device_id text not null, user_id text not null, reason text not null, "values" jsonb not null, archived_at timestamptz not null default now())`.execute(
+    trx,
+  );
+}
+
 /** Takes the schema lock and makes sure the bookkeeping table exists (inside `trx`). */
 export async function prepareSchemaTransaction(trx: Transaction<Tables>): Promise<void> {
   await sql`select pg_advisory_xact_lock(${SCHEMA_LOCK})`.execute(trx);
@@ -198,6 +221,7 @@ export async function applySchemaIn(
       `Schema changes need a migration (migrations/<version>/pre.ts or post.ts):\n- ${plan.destructive.join('\n- ')}`,
     );
   }
+  await ensureSyncObjects(trx);
   for (const operation of plan.operations) await run(trx, operation);
   if (options.security) await applyRowSecurity(trx, buildRowSecurity(registry, options.security));
   await recordSchema(trx, plan.recorded);

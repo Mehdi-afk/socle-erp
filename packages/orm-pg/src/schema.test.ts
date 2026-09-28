@@ -108,6 +108,8 @@ describe('buildSchema', () => {
     expect(partners.indexes.map((i) => i.name).sort()).toEqual([
       'sch_partner_name_idx',
       'sch_partner_parent_id_idx',
+      // Changes since a synchronisation cursor are read by version.
+      'sch_partner_version_idx',
     ]);
     expect(partners.uniques).toEqual([{ name: 'sch_partner_email_uniq_key', columns: ['email'] }]);
     const rel = table(schema, 'sch_partner_tag_ids_rel');
