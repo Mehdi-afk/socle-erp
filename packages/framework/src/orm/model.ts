@@ -32,6 +32,19 @@ export type MethodsFactory = (Base: RecordsetConstructor) => RecordsetConstructo
 export type ConflictPolicy = 'field-lww' | 'server-wins' | 'append-only' | 'manual';
 
 /**
+ * A legal obligation to keep the records of a model (GDPR: erasure is refused while it runs).
+ * @public
+ */
+export interface LegalRetention {
+  /** Why, as shown to the administrator (e.g. "Code de commerce, art. L123-22"). */
+  readonly reason: LocalizedText;
+  /** Duration in years from `dateField`; omitted: kept for good. */
+  readonly years?: number | undefined;
+  /** date or datetime field the duration starts from (required with `years`). */
+  readonly dateField?: string | undefined;
+}
+
+/**
  * A constraint checked after every create or write touching one of its fields: the named
  * method receives the records and throws a {@link ValidationError} when they are invalid.
  * @public
@@ -75,6 +88,11 @@ export interface ModelDefinitionInput {
   readonly offline?:
     | { readonly conflict?: ConflictPolicy | undefined; readonly syncable?: boolean | undefined }
     | undefined;
+  /**
+   * A legal obligation to keep these records (e.g. invoices: 10 years in France). While such
+   * a record refers to a person, that person cannot be anonymised; the reason is shown.
+   */
+  readonly retention?: LegalRetention | undefined;
   /** Isomorphic methods: run on the server AND offline in the browser. */
   readonly methods?: MethodsFactory | undefined;
   /** Server methods: never run offline; queued as intents and replayed at synchronisation. */

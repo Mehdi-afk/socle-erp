@@ -5,6 +5,7 @@ import {
   ModelDefinitionError,
   TECHNICAL_FIELDS,
   type ConflictPolicy,
+  type LegalRetention,
   type MethodsFactory,
   type ModelConstraint,
   type ModelDefinition,
@@ -52,6 +53,8 @@ export interface ModelMeta {
    */
   readonly mixins: readonly string[];
   readonly offline: { readonly conflict: ConflictPolicy; readonly syncable: boolean };
+  /** Legal obligation to keep the records, if any. */
+  readonly retention?: LegalRetention | undefined;
   /** Modules that define or extend the model, in load order. */
   readonly modules: readonly string[];
   /** Names of the server methods (stubs on the client). */
@@ -348,6 +351,7 @@ function buildOne(draft: Draft, parent: (name: string) => Built, side: RuntimeSi
     delegations,
     delegatedFields,
     mixins: Object.freeze(mixins),
+    retention: definition.retention,
     offline: Object.freeze({
       conflict: definition.offline?.conflict ?? 'field-lww',
       syncable: definition.offline?.syncable ?? true,
@@ -440,6 +444,16 @@ function validate(built: Built, registry: ModelRegistry): void {
     .prototype as Record<string, unknown>;
   const composed = meta.recordClass.prototype as Record<string, unknown>;
 
+  const retention = meta.retention;
+  if (retention) {
+    if (retention.years !== undefined) {
+      if (!Number.isInteger(retention.years) || retention.years <= 0)
+        fail('retention years must be a positive integer');
+      const dateType = meta.fields.get(retention.dateField ?? '')?.type;
+      if (dateType !== 'date' && dateType !== 'datetime')
+        fail('retention needs a date or datetime "dateField" when it has "years"');
+    }
+  }
   for (const [name, definition] of meta.fields) {
     if (name !== 'id' && RECORDSET_MEMBERS.includes(name))
       fail(`field "${name}" clashes with a recordset member`);

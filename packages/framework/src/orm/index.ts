@@ -54,6 +54,7 @@ export type { MemoryStorage } from './memory-storage.js';
 export { defineModel, extendModel, ModelDefinitionError, TECHNICAL_FIELDS } from './model.js';
 export type {
   ConflictPolicy,
+  LegalRetention,
   MethodsFactory,
   ModelConstraint,
   ModelDefinition,

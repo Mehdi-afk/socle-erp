@@ -2,7 +2,15 @@
 //
 // A person or an organisation. Minimal here: the `contacts` module enriches it through
 // extendModel (addresses, legal identifiers, tags…).
-import { defineModel, f } from '@socle/framework';
+import { defineModel, f, ValidationError } from '@socle/framework';
+
+import {
+  anonymizedValues,
+  exportPersonalData,
+  reasonText,
+  retentionBlocks,
+  type PersonalDataExport,
+} from '../lib/gdpr.js';
 
 export default defineModel({
   name: 'res.partner',
@@ -30,4 +38,38 @@ export default defineModel({
     countryId: f.many2one('res.country', { label: { fr: 'Pays', en: 'Country', ar: 'البلد' } }),
     active: f.boolean({ default: true, label: { fr: 'Actif', en: 'Active', ar: 'نشط' } }),
   },
+  serverMethods: (Base) =>
+    class extends Base {
+      /** GDPR: everything the user may read about this person (right of access). */
+      gdprExport(): Promise<PersonalDataExport> {
+        return exportPersonalData(this.env, this.ensureOne().id);
+      }
+
+      /**
+       * GDPR: erases this person's identifying data (right to erasure). Refused while a legal
+       * obligation keeps a record about them, or while they are a user of the system.
+       */
+      async gdprAnonymize(): Promise<{ readonly anonymized: true }> {
+        const partner = this.ensureOne();
+        const system = this.env.sudo(`GDPR: checks before anonymising ${partner.id}`);
+        const blocks = await retentionBlocks(system, partner.id, new Date());
+        if (blocks.length > 0) {
+          const reasons = blocks.map(
+            (block) =>
+              `${reasonText(block.reason, this.env.user.lang)} (${String(block.count)} × ${block.model})`,
+          );
+          throw new ValidationError(
+            `This person cannot be anonymised: a legal obligation keeps records about them — ${reasons.join('; ')}.`,
+          );
+        }
+        if (
+          system.registry.has('res.users') &&
+          (await system.model('res.users').searchCount([['partnerId', '=', partner.id]])) > 0
+        ) {
+          throw new ValidationError('This person is a user: remove the user account first.');
+        }
+        await partner.write(anonymizedValues(this.env.registry.get('res.partner')));
+        return { anonymized: true };
+      }
+    },
 });

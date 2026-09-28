@@ -591,6 +591,13 @@ export function isUserValue(value: unknown): value is UserValue;
 // @public (undocumented)
 export const kanban: ContainerBuilder;
 
+// @public
+export interface LegalRetention {
+    readonly dateField?: string | undefined;
+    readonly reason: LocalizedText;
+    readonly years?: number | undefined;
+}
+
 // @public (undocumented)
 export const list: ContainerBuilder;
 
@@ -707,6 +714,7 @@ export interface ModelDefinitionInput {
         readonly syncable?: boolean | undefined;
     } | undefined;
     readonly order?: string | undefined;
+    readonly retention?: LegalRetention | undefined;
     readonly serverMethods?: MethodsFactory | undefined;
     // (undocumented)
     readonly unique?: readonly UniqueConstraint[] | undefined;
@@ -767,6 +775,7 @@ export interface ModelMeta {
     // (undocumented)
     readonly order: readonly OrderTerm[];
     readonly recordClass: RecordsetConstructor;
+    readonly retention?: LegalRetention | undefined;
     readonly serverMethodNames: readonly string[];
     readonly table: string;
     // (undocumented)
