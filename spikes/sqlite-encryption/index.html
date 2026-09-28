@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>spike sqlite encryption</title>
+<script type="module">
+  const params = new URLSearchParams(location.search);
+  new Worker(`./bench.mjs?${params}`, { type: 'module' });
+</script>

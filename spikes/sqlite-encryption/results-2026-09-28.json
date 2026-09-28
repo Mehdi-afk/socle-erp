@@ -1,0 +1,144 @@
+{
+  "date": "2026-09-28",
+  "machine": "Windows 11, Edge 154 headless",
+  "campaigns": [
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "n": 20000,
+      "runs": 3,
+      "variants": {
+        "official-plain": {
+          "insert": 1357.5,
+          "lookup2000": 173.3,
+          "listPage200": 933.3,
+          "search20": 280.2,
+          "update5000": 668,
+          "reopen": 4,
+          "sizeKiB": 7928,
+          "plaintextOnDisk": 1
+        },
+        "mc-plain": {
+          "insert": 1212.9,
+          "lookup2000": 210.3,
+          "listPage200": 474,
+          "search20": 165.4,
+          "update5000": 306.4,
+          "reopen": 1.8,
+          "sizeKiB": 7928,
+          "plaintextOnDisk": 1
+        },
+        "mc-chacha20": {
+          "insert": 1248.7,
+          "lookup2000": 367.9,
+          "listPage200": 489.8,
+          "search20": 155,
+          "update5000": 377.6,
+          "reopen": 72,
+          "sizeKiB": 7984,
+          "plaintextOnDisk": 0
+        },
+        "mc-chacha20-kdf1": {
+          "insert": 1252.5,
+          "lookup2000": 371,
+          "listPage200": 530.8,
+          "search20": 200.2,
+          "update5000": 331,
+          "reopen": 18.1,
+          "sizeKiB": 7984,
+          "plaintextOnDisk": 0
+        },
+        "mc-sqlcipher-aes256": {
+          "insert": 1305.1,
+          "lookup2000": 505,
+          "listPage200": 514,
+          "search20": 208.9,
+          "update5000": 531.9,
+          "reopen": 378.7,
+          "sizeKiB": 8040,
+          "plaintextOnDisk": 0
+        },
+        "official-field-aesgcm": {
+          "insert": 1041.5,
+          "encrypt": 1786.2,
+          "lookup2000": 362.4,
+          "listPage200": 898.6,
+          "search20": 12261.5,
+          "update5000": 490.3,
+          "reopen": 2.7,
+          "sizeKiB": 10272,
+          "plaintextOnDisk": 0
+        }
+      },
+      "pbkdf2_600k_ms": 722
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "n": 20000,
+      "runs": 3,
+      "variants": {
+        "official-plain": {
+          "insert": 653.3,
+          "lookup2000": 96,
+          "listPage200": 398.5,
+          "search20": 103.6,
+          "update5000": 192.1,
+          "reopen": 1.5,
+          "sizeKiB": 7928,
+          "plaintextOnDisk": 1
+        },
+        "mc-plain": {
+          "insert": 642.9,
+          "lookup2000": 100.2,
+          "listPage200": 471.8,
+          "search20": 123.8,
+          "update5000": 203.5,
+          "reopen": 1.5,
+          "sizeKiB": 7928,
+          "plaintextOnDisk": 1
+        },
+        "mc-chacha20": {
+          "insert": 620.3,
+          "lookup2000": 201.3,
+          "listPage200": 345.6,
+          "search20": 102,
+          "update5000": 251.5,
+          "reopen": 85.6,
+          "sizeKiB": 7984,
+          "plaintextOnDisk": 0
+        },
+        "mc-chacha20-kdf1": {
+          "insert": 720.4,
+          "lookup2000": 231.6,
+          "listPage200": 379.4,
+          "search20": 102.4,
+          "update5000": 236.1,
+          "reopen": 16,
+          "sizeKiB": 7984,
+          "plaintextOnDisk": 0
+        },
+        "mc-sqlcipher-aes256": {
+          "insert": 818.2,
+          "lookup2000": 434,
+          "listPage200": 474.3,
+          "search20": 116.3,
+          "update5000": 462.5,
+          "reopen": 373.8,
+          "sizeKiB": 8040,
+          "plaintextOnDisk": 0
+        },
+        "official-field-aesgcm": {
+          "insert": 462.9,
+          "encrypt": 996,
+          "lookup2000": 135.8,
+          "listPage200": 503.1,
+          "search20": 6416.5,
+          "update5000": 285.5,
+          "reopen": 2.2,
+          "sizeKiB": 10280,
+          "plaintextOnDisk": 0
+        }
+      },
+      "pbkdf2_600k_ms": 349
+    }
+  ]
+}
