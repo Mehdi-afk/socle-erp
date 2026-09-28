@@ -51,7 +51,8 @@ const NETWORK_MODULES = [
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/', '**/dist/', '**/coverage/', '**/.turbo/'],
+    // spikes/*/builds: third-party code downloaded by a spike, never committed.
+    ignores: ['**/node_modules/', '**/dist/', '**/coverage/', '**/.turbo/', 'spikes/**/builds/'],
   },
 
   js.configs.recommended,

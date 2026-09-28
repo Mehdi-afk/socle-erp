@@ -8,3 +8,6 @@ node_modules/
 dist/
 coverage/
 .turbo/
+
+# Third-party builds downloaded by spikes (never committed)
+spikes/**/builds/

@@ -28,7 +28,6 @@ const ARCHIVES = [
 ];
 
 // Every path below is built from constants of this file, inside ./builds.
-
 mkdirSync(builds, { recursive: true });
 for (const archive of ARCHIVES) {
   const response = await fetch(archive.url);
