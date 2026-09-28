@@ -15,6 +15,21 @@ export interface AccessControl {
 }
 
 // @public
+export interface AccessDefinition {
+    // (undocumented)
+    readonly create?: boolean | undefined;
+    readonly group: string | null;
+    // (undocumented)
+    readonly model: string;
+    // (undocumented)
+    readonly read?: boolean | undefined;
+    // (undocumented)
+    readonly unlink?: boolean | undefined;
+    // (undocumented)
+    readonly write?: boolean | undefined;
+}
+
+// @public
 export class AccessError extends SocleError {
     constructor(message: string);
 }
@@ -44,6 +59,15 @@ export interface AuditSink {
 export function buildModelRegistry(modules: readonly ModuleModels[], options: {
     readonly side: RuntimeSide;
 }): ModelRegistry;
+
+// @public
+export function buildSecurityPolicy(modules: readonly ModuleSecurity[], hasModel: (model: string) => boolean): SecurityPolicy;
+
+// @public
+export function canAccessModel(policy: SecurityPolicy, groups: ReadonlySet<string>, model: string, operation: Operation): boolean;
+
+// @public
+export function canSeeField(groups: ReadonlySet<string>, definition: FieldDefinition): boolean;
 
 // @public
 export type Capability = 'sudo' | 'cron' | 'files' | {
@@ -120,6 +144,9 @@ export function countersignPackage(pkg: SignedModulePackage, marketplace: {
     readonly keyId: string;
     readonly key: SigningPrivateKey;
 }): Promise<SignedModulePackage>;
+
+// @public
+export function createAccessControl(policy: SecurityPolicy, registry: ModelRegistry): AccessControl;
 
 // @public
 export function createCapabilityGuard(manifest: ModuleManifest, onDenied?: CapabilityAuditHook): CapabilityGuard;
@@ -213,6 +240,9 @@ export class DuplicateModuleError extends SocleError {
     // (undocumented)
     readonly moduleName: string;
 }
+
+// @public
+export function effectiveGroups(policy: SecurityPolicy, groupIds: readonly string[]): ReadonlySet<string>;
 
 // @public
 export function emptyValue(definition: FieldDefinition): unknown;
@@ -368,6 +398,15 @@ export type FieldValues<F> = {
 export function findRevocation(list: RevocationList, subject: RevocationSubject): RevocationEntry | undefined;
 
 // @public
+export interface GroupDefinition {
+    readonly id: string;
+    // (undocumented)
+    readonly implies?: readonly string[] | undefined;
+    // (undocumented)
+    readonly name: LocalizedText;
+}
+
+// @public
 export interface HttpClient {
     // (undocumented)
     request(url: string, request?: OutboundRequest): Promise<OutboundResponse>;
@@ -435,6 +474,9 @@ export function isSafeRelativePath(path: string): boolean;
 
 // @public
 export function isStoredColumn(definition: FieldDefinition): boolean;
+
+// @public
+export function isUserValue(value: unknown): value is UserValue;
 
 // @public
 export interface LocalizedText {
@@ -707,6 +749,18 @@ export interface ModulePackageIndex {
 }
 
 // @public
+export interface ModuleSecurity {
+    // (undocumented)
+    readonly access?: readonly AccessDefinition[] | undefined;
+    // (undocumented)
+    readonly groups?: readonly GroupDefinition[] | undefined;
+    // (undocumented)
+    readonly module: string;
+    // (undocumented)
+    readonly rules?: readonly RuleDefinition[] | undefined;
+}
+
+// @public
 export function modulesToDisable(list: RevocationList, installed: Iterable<RevocationSubject>): string[];
 
 // @public (undocumented)
@@ -838,6 +892,9 @@ export interface RelationalField<T extends 'many2one' | 'one2many' | 'many2many'
 export function resolveInstallation(catalog: ModuleCatalog, requested: Iterable<string>, installed?: Iterable<string>): string[];
 
 // @public
+export function resolveRuleDomain(domain: RuleDomain, user: UserContext): Domain;
+
+// @public
 export type RevocationEntry = {
     readonly kind: 'package';
     readonly digest: string;
@@ -891,6 +948,26 @@ export class RevokedModuleError extends SocleError {
 }
 
 // @public
+export type RuleCondition = readonly [string, DomainOperator, unknown];
+
+// @public
+export interface RuleDefinition {
+    // (undocumented)
+    readonly domain: RuleDomain;
+    readonly groups?: readonly string[] | undefined;
+    readonly id: string;
+    // (undocumented)
+    readonly model: string;
+    readonly operations?: readonly Operation[] | undefined;
+}
+
+// @public
+export type RuleDomain = readonly (RuleCondition | '&' | '|' | '!')[];
+
+// @public
+export function ruleDomainFor(policy: SecurityPolicy, user: UserContext, groups: ReadonlySet<string>, model: string, operation: Operation, resolve: FieldResolver): DomainNode;
+
+// @public
 export type RuntimeSide = 'server' | 'client';
 
 // @public (undocumented)
@@ -910,6 +987,19 @@ export interface SearchParams {
     // (undocumented)
     readonly offset?: number | undefined;
     readonly order?: string | undefined;
+}
+
+// @public
+export class SecurityDefinitionError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export interface SecurityPolicy {
+    readonly access: ReadonlyMap<string, readonly AccessDefinition[]>;
+    // (undocumented)
+    readonly groups: ReadonlyMap<string, GroupDefinition>;
+    readonly rules: ReadonlyMap<string, readonly RuleDefinition[]>;
 }
 
 // @public
@@ -1092,6 +1182,12 @@ export interface UserContext {
     readonly lang: string;
     // (undocumented)
     readonly tz: string;
+}
+
+// @public
+export interface UserValue {
+    // (undocumented)
+    readonly $user: 'id' | 'companyId' | 'companyIds' | 'groupIds';
 }
 
 // @public
