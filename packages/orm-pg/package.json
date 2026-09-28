@@ -20,7 +20,9 @@
     "fast-check": "^4.10.2"
   },
   "dependencies": {
+    "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
+    "@socle/sync": "workspace:*",
     "kysely": "^0.29.6",
     "pg": "^8.23.0",
     "semver": "^7.8.5",

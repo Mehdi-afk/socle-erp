@@ -16,7 +16,15 @@ export type {
 export { migrationsBetween } from './migrations.js';
 export type { MigrationContext, ModuleMigration } from './migrations.js';
 export { columnName, identifier, MAX_IDENTIFIER_LENGTH } from './naming.js';
-export { buildSchema, diffSchema, MODULE_TABLE, relationTable, SCHEMA_TABLE } from './schema.js';
+export {
+  buildSchema,
+  diffSchema,
+  FIELD_VERSIONS_COLUMN,
+  MODULE_TABLE,
+  relationTable,
+  SCHEMA_TABLE,
+  SYNC_TABLES,
+} from './schema.js';
 export type {
   ColumnSchema,
   ColumnType,
@@ -33,4 +41,7 @@ export { createTemplateSnapshots } from './snapshot.js';
 export type { SnapshotLabel, SnapshotRef, SnapshotStore } from './snapshot.js';
 export { applyRowSecurity, buildRowSecurity } from './rls.js';
 export type { RowPolicy, RowSecurityPlan } from './rls.js';
+export { createPgSession, SYSTEM_ACTOR } from './session.js';
+export type { PgSession } from './session.js';
 export { createPgStorage } from './storage.js';
+export { createPgSyncBackend, deviceStatus, registerDevice, revokeDevice } from './sync-backend.js';

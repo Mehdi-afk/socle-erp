@@ -310,7 +310,10 @@ export function queryParity(withStorage: WithStorage) {
 /** Same values read back after inserts, updates and deletions. */
 export function writeParity(withStorage: WithStorage) {
   const partners = registry.get('par.partner');
-  const fields = [...partners.fields.keys()].filter((name) => name !== 'orderIds' && name !== 'id');
+  // `version` is numbered by server storages from a sequence (synchronisation cursor).
+  const fields = [...partners.fields.keys()].filter(
+    (name) => name !== 'orderIds' && name !== 'id' && name !== 'version',
+  );
   return fc.asyncProperty(
     dataset,
     fc.array(
