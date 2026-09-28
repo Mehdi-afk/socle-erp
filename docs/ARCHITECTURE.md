@@ -103,7 +103,7 @@ S'y ajoutent les **mixins** (`mail.thread`, `sequence.mixin`, `archivable`…) e
 | Validation | **Zod 4**, schémas générés depuis les modèles | Une seule source de vérité |
 | Tâches de fond | **pg-boss** (file dans PostgreSQL) | Zéro dépendance supplémentaire en auto-hébergement |
 | Client web | **React 19 + Vite + TanStack Router/Query + Tailwind v4 + Radix/shadcn** | SPA/PWA ; pas de Next.js (le SSR n'apporte rien à un client offline-first) |
-| Base locale (client) | **SQLite WASM sur OPFS** dans un Web Worker, chiffrée (SQLite3 Multiple Ciphers — à valider en *spike*) | Même moteur de requêtes que Bio Réactifs, FTS5 disponible |
+| Base locale (client) | **SQLite WASM sur OPFS** dans un Web Worker, chiffrée par **SQLite3 Multiple Ciphers en ChaCha20-Poly1305** (ADR 007 : clé de base aléatoire enveloppée par une clé dérivée à la connexion et un secret d'appareil) | Même moteur de requêtes que Bio Réactifs, FTS5 disponible |
 | Bureau / caisse | **Tauri 2** (phase 5) | Plus léger et plus sûr qu'Electron (permissions par capacités) |
 | Mobile | PWA installable, puis **Capacitor** si besoin natif | Un seul code |
 | Recherche | PostgreSQL FTS (`french`, `simple` pour l'arabe) + `pg_trgm` | Pas de moteur externe |
@@ -768,7 +768,7 @@ La marketplace n'est pas nécessaire en V1 : tout ce qui la rend possible l'est 
 | O2 | Nom définitif et marque | Recherche d'antériorité INPI (FR) et INAPI (DZ) avant tout marketing |
 | O3 | Structure juridique éditrice (France ou Algérie) | Impacte CRA, facturation, HDS — voir un expert-comptable/juriste |
 | O4 | Plateforme(s) agréée(s) à connecter en premier | Choisir 1-2 PA avec API documentée et offre partenaire éditeur |
-| O5 | Chiffrement de la base SQLite WASM | *Spike* technique en phase 1 : SQLite3 Multiple Ciphers vs chiffrement applicatif des champs |
+| O5 | ~~Chiffrement de la base SQLite WASM~~ | **Tranché (ADR 007)** : SQLite3 Multiple Ciphers en ChaCha20-Poly1305, mesures à l'appui |
 | O6 | Taux de commission de la marketplace et conditions du contrat éditeur | À fixer avant la phase 6 ; s'aligner sur les pratiques des marketplaces d'éditeurs comparables |
 
 ---
