@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// Test helper (not exported): one throw-away PostgreSQL server per test file, one fresh
-// database per test.
+// Test helper (not exported): one fresh database per test, on the PostgreSQL server started
+// once for the whole run (global-setup.ts).
 import { randomUUID } from 'node:crypto';
 
-import { startPostgres, type EphemeralPostgres } from '@socle/testing';
 import { sql } from 'kysely';
-import { afterAll, beforeAll } from 'vitest';
+import { afterAll, inject } from 'vitest';
 
 import { createPgDatabase, type Executor } from './database.js';
 
@@ -23,20 +22,14 @@ export interface TestDatabases {
 }
 
 export function useTestDatabases(): TestDatabases {
-  let server: EphemeralPostgres | undefined;
+  const server = { url: inject('pgUrl') };
   const pools: Executor[] = [];
-
-  beforeAll(async () => {
-    server = await startPostgres();
-  }, 180_000);
 
   afterAll(async () => {
     await Promise.all(pools.map((pool) => pool.destroy()));
-    await server?.stop();
   }, 60_000);
 
   const createNamed = async (): Promise<{ db: Executor; name: string; admin: Executor }> => {
-    if (!server) throw new Error('PostgreSQL is not started');
     const name = `test_${randomUUID().replaceAll('-', '')}`;
     const admin = createPgDatabase({ connectionString: server.url, max: 2 });
     pools.push(admin);
@@ -49,7 +42,6 @@ export function useTestDatabases(): TestDatabases {
   };
 
   const createOwned = async (): Promise<Executor> => {
-    if (!server) throw new Error('PostgreSQL is not started');
     const suffix = randomUUID().replaceAll('-', '');
     const [role, name, password] = [`app_${suffix}`, `test_${suffix}`, randomUUID()];
     const admin = createPgDatabase({ connectionString: server.url, max: 1 });
