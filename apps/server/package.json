@@ -13,6 +13,16 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@socle/testing": "workspace:*",
     "@types/node": "^24.13.6"
+  },
+  "dependencies": {
+    "@socle/crypto": "workspace:*",
+    "@socle/framework": "workspace:*",
+    "@socle/orm-pg": "workspace:*",
+    "@socle/sync": "workspace:*",
+    "fastify": "^5.12.5",
+    "kysely": "^0.29.6",
+    "zod": "^4.6.5"
   }
 }

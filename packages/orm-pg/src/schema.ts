@@ -31,6 +31,15 @@ export const SYNC_TABLES = {
 } as const;
 
 /**
+ * Authentication bookkeeping of the server (ARCHITECTURE.md §9.3): users and their sessions.
+ * Reserved names. (Business data about people lives in modules, e.g. `res.partner`.)
+ */
+export const AUTH_TABLES = {
+  user: 'socle_user',
+  session: 'socle_session',
+} as const;
+
+/**
  * Per-field versions of a record (JSON object field → version), the base of conflict
  * detection. A technical column of every model table, managed by the storage.
  */
@@ -242,7 +251,12 @@ export function buildSchema(registry: ModelRegistry): DatabaseSchema {
     .flatMap((meta) => modelTable(registry, meta));
 
   const owners = new Map<string, string>(
-    [SCHEMA_TABLE, MODULE_TABLE, ...Object.values(SYNC_TABLES)].flatMap((reserved) => [
+    [
+      SCHEMA_TABLE,
+      MODULE_TABLE,
+      ...Object.values(SYNC_TABLES),
+      ...Object.values(AUTH_TABLES),
+    ].flatMap((reserved) => [
       [reserved, 'the ORM'],
       [`${reserved}_pkey`, 'the ORM'],
     ]),
