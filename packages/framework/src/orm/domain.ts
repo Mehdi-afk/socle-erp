@@ -228,7 +228,10 @@ export function matchesPattern(text: string, pattern: string, caseInsensitive: b
 const INTEGER_STRING = /^-?\d+$/;
 const FRACTION_STRING = /^-?\d+\.\d+$/;
 
-/** A decimal string such as `-12` or `12.345` (flat regexes: no backtracking risk). */
+/**
+ * A decimal string such as `-12` or `12.345` (flat regexes: no backtracking risk).
+ * @public
+ */
 export function isDecimalString(text: string): boolean {
   return INTEGER_STRING.test(text) || FRACTION_STRING.test(text);
 }
