@@ -6,7 +6,8 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
-import { compose, databaseUrl, loadModules, main, tenantDatabase } from '@socle/cli';
+import { main } from '@socle/cli';
+import { compose, databaseUrl, loadModules, tenantDatabase } from '@socle/runtime';
 import { exportPublicKey, generateSigningKeyPair } from '@socle/crypto';
 import {
   buildModelRegistry,

@@ -5,7 +5,6 @@
 import { delimiter, resolve } from 'node:path';
 
 import { SocleError } from '@socle/framework';
-import { identifier } from '@socle/orm-pg';
 import { z } from 'zod';
 
 const env = z.object({
@@ -47,26 +46,4 @@ export function readConfig(
     adminUrl: parsed.data.SOCLE_DATABASE_URL,
     moduleRoots: (paths.length > 0 ? paths : ['modules']).map((p) => resolve(cwd, p)),
   };
-}
-
-const TENANT = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
-
-/**
- * Database of a tenant: `acme-sarl` → `socle_acme_sarl`. Tenant names are subdomain labels
- * (lowercase letters, digits, single hyphens), so the mapping is injective.
- */
-export function tenantDatabase(tenant: string): string {
-  if (!TENANT.test(tenant) || tenant.includes('--')) {
-    throw new ConfigError(
-      `Invalid tenant "${tenant}" (2-32 lowercase letters, digits or single hyphens, starting with a letter).`,
-    );
-  }
-  return identifier(`socle_${tenant.replaceAll('-', '_')}`);
-}
-
-/** The admin URL pointed at another database of the same server. */
-export function databaseUrl(adminUrl: string, database: string): string {
-  const url = new URL(adminUrl);
-  url.pathname = `/${identifier(database)}`;
-  return url.toString();
 }

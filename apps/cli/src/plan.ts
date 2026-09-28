@@ -2,19 +2,12 @@
 //
 // What a module command will do, computed without touching the database (pure functions).
 import {
-  buildModelRegistry,
-  buildSecurityPolicy,
-  buildViewRegistry,
   resolveInstallation,
   SocleError,
   topologicalOrder,
-  type ModelRegistry,
   type ModuleCatalog,
-  type SecurityPolicy,
 } from '@socle/framework';
 import semver from 'semver';
-
-import type { ModuleSet } from './loader.js';
 
 export class PlanError extends SocleError {
   constructor(message: string) {
@@ -97,30 +90,4 @@ export function planUninstall(
     remove: order.filter((name) => removed.has(name)).reverse(),
     modules: order.filter((name) => !removed.has(name)),
   };
-}
-
-export interface Composition {
-  readonly registry: ModelRegistry;
-  readonly security: SecurityPolicy;
-}
-
-/**
- * The registry and security policy of `modules` (dependency order). Views are composed too,
- * so that a view extension whose selector finds nothing fails before any database change.
- */
-export function compose(set: ModuleSet, modules: readonly string[]): Composition {
-  const loaded = modules.map((name) => set.get(name));
-  const registry = buildModelRegistry(
-    loaded.map((m) => m.models),
-    { side: 'server' },
-  );
-  const security = buildSecurityPolicy(
-    loaded.map((m) => m.security),
-    (model) => registry.has(model),
-  );
-  buildViewRegistry(
-    loaded.map((m) => m.views),
-    registry,
-  );
-  return { registry, security };
 }

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //
 // Geographic reference data. Names are stored in French (official source); the client shows
-// countries in the user language from their ISO code (Intl.DisplayNames).
+// countries in the user language from their ISO code (Intl.DisplayNames). Cities and communes
+// are free text on addresses (maintainer's decision, 2026-09-28): no reference list.
 import { defineModel, f } from '@socle/framework';
 
 export const country = defineModel({
@@ -32,20 +33,4 @@ export const state = defineModel({
   },
 });
 
-export const city = defineModel({
-  name: 'res.city',
-  description: { fr: 'Commune', en: 'City', ar: 'بلدية' },
-  order: 'name',
-  fields: {
-    countryId: f.many2one('res.country', { required: true, ondelete: 'cascade' }),
-    stateId: f.many2one('res.country.state', { ondelete: 'cascade' }),
-    code: f.char({
-      size: 16,
-      label: { fr: 'Code officiel', en: 'Official code', ar: 'الرمز الرسمي' },
-    }),
-    name: f.char({ required: true }),
-    zip: f.char({ size: 16 }),
-  },
-});
-
-export default [country, state, city];
+export default [country, state];

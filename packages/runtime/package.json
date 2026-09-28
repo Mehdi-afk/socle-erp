@@ -1,13 +1,10 @@
 {
-  "name": "@socle/cli",
+  "name": "@socle/runtime",
   "version": "0.0.0",
   "private": true,
-  "description": "socle CLI: db, module, scaffold",
+  "description": "Node side of the platform: modules loaded from disk, tenants and their installed modules",
   "license": "LGPL-3.0-only",
   "type": "module",
-  "bin": {
-    "socle": "./bin/socle.mjs"
-  },
   "exports": {
     ".": "./src/index.ts"
   },
@@ -15,17 +12,14 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
-  "devDependencies": {
-    "@socle/testing": "workspace:*",
-    "@types/node": "^24.13.6",
-    "@types/semver": "^7.8.0"
-  },
   "dependencies": {
     "@socle/framework": "workspace:*",
     "@socle/orm-pg": "workspace:*",
-    "@socle/runtime": "workspace:*",
     "kysely": "^0.29.6",
-    "semver": "^7.8.5",
-    "zod": "^4.6.5"
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "@types/semver": "^7.8.0"
   }
 }

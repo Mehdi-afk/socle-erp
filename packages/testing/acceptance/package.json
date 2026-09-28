@@ -15,6 +15,7 @@
     "@socle/framework": "workspace:*",
     "@socle/orm-pg": "workspace:*",
     "@socle/orm-sqlite": "workspace:*",
+    "@socle/runtime": "workspace:*",
     "@socle/server": "workspace:*",
     "@socle/sync": "workspace:*",
     "@socle/testing": "workspace:*",

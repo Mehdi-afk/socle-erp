@@ -8,8 +8,9 @@ import { join } from 'node:path';
 import { ModuleLocationError, MissingDependencyError } from '@socle/framework';
 import { describe, expect, it } from 'vitest';
 
-import { loadModules, ModuleLoadError } from './loader.js';
-import { compose, planInstall, planUninstall, planUpgrade, PlanError } from './plan.js';
+import { compose, loadModules, ModuleLoadError } from '@socle/runtime';
+
+import { planInstall, planUninstall, planUpgrade, PlanError } from './plan.js';
 import { scaffoldModule, ScaffoldError } from './scaffold.js';
 import { useTempDirs, writeFiles, writeShopModules } from './test-support.js';
 

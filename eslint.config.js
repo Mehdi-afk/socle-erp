@@ -118,7 +118,7 @@ export default tseslint.config(
     // directories). Paths are confined in code instead: loaded files must resolve inside their
     // module root (loader.ts), scaffolded names are validated by the manifest rules, exports
     // never overwrite (flag "wx").
-    files: ['apps/cli/**/*.ts'],
+    files: ['apps/cli/**/*.ts', 'packages/runtime/**/*.ts'],
     rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
 
