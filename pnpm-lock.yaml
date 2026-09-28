@@ -166,10 +166,17 @@ importers:
         specifier: ^24.13.6
         version: 24.13.6
 
-  packages/crypto: {}
+  packages/crypto:
+    devDependencies:
+      fast-check:
+        specifier: ^4.10.2
+        version: 4.10.2
 
   packages/framework:
     dependencies:
+      '@socle/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       semver:
         specifier: ^7.8.5
         version: 7.8.5

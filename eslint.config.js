@@ -29,6 +29,26 @@ const NODE_BUILTINS = [
   'zlib',
 ];
 
+const NETWORK_MODULES = [
+  'http',
+  'https',
+  'http2',
+  'net',
+  'tls',
+  'dgram',
+  'node:http',
+  'node:https',
+  'node:http2',
+  'node:net',
+  'node:tls',
+  'node:dgram',
+  'undici',
+  'axios',
+  'node-fetch',
+  'got',
+  'ky',
+];
+
 export default tseslint.config(
   {
     ignores: ['**/node_modules/', '**/dist/', '**/coverage/', '**/.turbo/'],
@@ -64,6 +84,10 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-implied-eval': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
+      // Flags every `obj[variable]` (typed-array indices included): pure noise in typed code.
+      // Compensated by strict typing (noUncheckedIndexedAccess), Map for untrusted keys and
+      // Semgrep's prototype-pollution rules. Still active for plain JavaScript files.
+      'security/detect-object-injection': 'off',
     },
   },
 
@@ -83,13 +107,18 @@ export default tseslint.config(
 
   // Isomorphic core: no Node and no DOM dependency (ARCHITECTURE.md §3.2)
   {
-    files: ['packages/framework/**/*.ts', 'packages/sync/**/*.ts'],
+    files: ['packages/framework/**/*.ts', 'packages/sync/**/*.ts', 'packages/crypto/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          // Exact module names: a pattern like "crypto" would also match "@socle/crypto".
+          paths: NODE_BUILTINS.filter((name) => name !== 'node:*').map((name) => ({
+            name,
+            message: 'The isomorphic core must not depend on Node.',
+          })),
           patterns: [
-            { group: NODE_BUILTINS, message: 'The isomorphic core must not depend on Node.' },
+            { group: ['node:*'], message: 'The isomorphic core must not depend on Node.' },
           ],
         },
       ],
@@ -113,12 +142,18 @@ export default tseslint.config(
   },
 
   // Modules may only use the public entry points of @socle/* packages (ARCHITECTURE.md §11.7)
+  // and never reach the network directly: outgoing calls go through the capability-checked
+  // HTTP client (ARCHITECTURE.md §11 bis).
   {
     files: ['modules/**/*.ts', 'modules/**/*.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          paths: NETWORK_MODULES.map((name) => ({
+            name,
+            message: 'Modules must use the HTTP client of their runtime context (capabilities).',
+          })),
           patterns: [
             {
               group: [
@@ -131,6 +166,13 @@ export default tseslint.config(
             },
           ],
         },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource'].map((name) => ({
+          name,
+          message: 'Modules must use the HTTP client of their runtime context (capabilities).',
+        })),
       ],
     },
   },

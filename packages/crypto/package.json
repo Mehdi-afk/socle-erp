@@ -6,10 +6,18 @@
   "license": "LGPL-3.0-only",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "socle-api": "./dist/types/index.d.ts",
+      "default": "./src/index.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "api:check": "tsc -p tsconfig.api.json && api-extractor run",
+    "api:update": "tsc -p tsconfig.api.json && api-extractor run --local"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2"
   }
 }
