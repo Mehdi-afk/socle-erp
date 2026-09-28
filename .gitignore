@@ -49,6 +49,9 @@ desktop.ini
 !.vscode/extensions.json
 *.swp
 
+# Third-party design inspiration: never committed (docs/design/direction-visuelle.md)
+inspiration-ui/
+
 # Office working files (change report lives outside the repo)
 ~$*
 *.xlsx
