@@ -1,4 +1,4 @@
-﻿# ADR 001 — TypeScript de bout en bout
+# ADR 001 — TypeScript de bout en bout
 
 - **Statut** : accepté
 - **Date** : 2026-09-28
