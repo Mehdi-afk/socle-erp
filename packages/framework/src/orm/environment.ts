@@ -19,7 +19,7 @@ import {
   type RuntimeSide,
 } from './model-registry.js';
 import { Recordset, type RecordValues, type SearchParams } from './recordset.js';
-import type { Storage } from './storage.js';
+import type { Storage, StorageActor } from './storage.js';
 import type { RecordsetOf } from './typing.js';
 import { emptyValue, isRecordId, normalizeValue } from './values.js';
 
@@ -244,14 +244,24 @@ export class Runtime {
   private readonly options: EnvironmentOptions;
   private readonly state: TransactionState;
   private readonly registry: ModelRegistry;
-  private readonly storage: Storage;
 
   constructor(env: Environment, options: EnvironmentOptions, state: TransactionState) {
     this.env = env;
     this.options = options;
     this.state = state;
     this.registry = options.registry;
-    this.storage = options.storage;
+  }
+
+  /** The storage acting for `as` (row-level security in SQL storages). */
+  private store(as: Environment = this.env): Storage {
+    const actor: StorageActor = {
+      userId: as.user.id,
+      su: as.su,
+      companyId: as.user.companyId,
+      companyIds: as.user.companyIds,
+      groupIds: as.user.groupIds,
+    };
+    return this.options.storage.as?.(actor) ?? this.options.storage;
   }
 
   // ─── environment ────────────────────────────────────────────────────────────
@@ -305,7 +315,7 @@ export class Runtime {
       { kind: 'condition', path: ['id'], operator: 'in', value: [...ids] },
       rule,
     );
-    const found = new Set(await this.storage.search(meta, where, {}));
+    const found = new Set(await this.store(as).search(meta, where, {}));
     const missing = ids.filter((id) => !found.has(id));
     if (missing.length === 0) return;
     if (rule.kind === 'true') throw new MissingRecordError(meta.name, missing);
@@ -370,7 +380,7 @@ export class Runtime {
       columns.some((c) => this.cached(meta.name, id, c) === UNSET),
     );
     if (missing.length === 0) return;
-    const rows = await this.storage.read(meta, missing, columns);
+    const rows = await this.store().read(meta, missing, columns);
     for (const [id, row] of rows) {
       for (const column of columns) {
         if (!this.isDirty(meta.name, id, column)) {
@@ -561,7 +571,7 @@ export class Runtime {
     this.checkModel(meta.name, 'read');
     const where = andNodes(this.prepareDomain(meta.name, domain), this.rule(meta.name, 'read'));
     await this.flush();
-    const ids = await this.storage.search(meta, where, {
+    const ids = await this.store().search(meta, where, {
       order:
         params.order === undefined ? meta.order : parseOrder(meta.name, params.order, meta.fields),
       limit: params.limit,
@@ -575,7 +585,7 @@ export class Runtime {
     const meta = this.registry.get(records.model);
     this.checkModel(meta.name, 'read');
     await this.flush();
-    return this.storage.count(
+    return this.store().count(
       meta,
       andNodes(this.prepareDomain(meta.name, domain), this.rule(meta.name, 'read')),
     );
@@ -642,7 +652,7 @@ export class Runtime {
       { kind: 'condition', path: [inverse], operator: 'in', value: [...ids] },
       rule,
     );
-    const childIds = await this.storage.search(child, where, { order: child.order });
+    const childIds = await this.store().search(child, where, { order: child.order });
     await this.load(child, childIds);
     const byParent = new Map<string, string[]>(ids.map((id) => [id, []]));
     for (const childId of childIds) {
@@ -755,7 +765,7 @@ export class Runtime {
       rows.push({ id, values });
     }
 
-    await this.storage.insert(meta, rows);
+    await this.store().insert(meta, rows);
     const ids = rows.map((row) => row.id);
     for (const [name, definition] of meta.fields) {
       if (definition.compute !== undefined && isStoredColumn(definition))
@@ -828,9 +838,12 @@ export class Runtime {
             }
             this.setCached(model, id, 'updatedAt', now);
             this.setCached(model, id, 'updatedBy', this.env.user.id);
-            await this.storage.update(meta, id, values);
+            await this.store(as).update(meta, id, values);
           }
           const ids = [...byId.keys()];
+          // The records must still satisfy the write rules once changed: a user cannot move a
+          // record out of their own scope (e.g. to a company they do not belong to).
+          await this.checkRecords(meta, ids, 'write', as);
           touched.push({ meta, ids, fields: [...fields] });
           await this.propagate({
             model,
@@ -873,7 +886,8 @@ export class Runtime {
           operator: 'in',
           value: [...ids],
         };
-        const referencing = (await this.storage.search(otherMeta, where, {})).filter(
+        // Integrity: every reference counts, visible to the user or not.
+        const referencing = (await this.store(su).search(otherMeta, where, {})).filter(
           (id) => !ids.includes(id) || other !== meta.name,
         );
         if (referencing.length === 0) continue;
@@ -900,7 +914,7 @@ export class Runtime {
       originals.set(id, fields);
     }
     await this.propagate({ model: meta.name, ids, fields: [...meta.fields.keys()], originals });
-    await this.storage.delete(meta, ids);
+    await this.store().delete(meta, ids);
     for (const id of ids) {
       this.state.cache.get(meta.name)?.delete(id);
       this.state.deleted.add(`${meta.name}:${id}`);
@@ -992,7 +1006,8 @@ export class Runtime {
       operator: 'in',
       value: [...ids],
     };
-    return this.storage.search(meta, where, {});
+    // Dependents are recomputed whoever can see them.
+    return this.store(this.suEnv()).search(meta, where, {});
   }
 
   /**
@@ -1044,7 +1059,7 @@ export class Runtime {
             values[name] = this.cached(model, id, name);
             fields.add(name);
           }
-          await this.storage.update(meta, id, values);
+          await this.store(this.suEnv()).update(meta, id, values);
         }
         this.invalidateComputed();
         recomputed.push({ meta, ids: [...byId.keys()], fields: [...fields] });

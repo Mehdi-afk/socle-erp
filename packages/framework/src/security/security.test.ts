@@ -290,5 +290,9 @@ describe('access control in the ORM', () => {
     // No access entry at all: refused (deny by default).
     const nobody = envFor(user('eve', [], [first.id]));
     await expect(nobody.model('sec.invoice').search([])).rejects.toThrow(AccessError);
+    // Moving one's own record out of one's scope (to another company): refused after the
+    // write (the request's transaction then rolls the change back).
+    const mine = await alice.model('sec.invoice').create({ name: 'A3', companyId: first.id });
+    await expect(mine.write({ companyId: second.id })).rejects.toThrow(AccessError);
   });
 });

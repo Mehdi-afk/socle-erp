@@ -9,6 +9,7 @@ import {
   SocleError,
   type ModelRegistry,
   type ModuleModels,
+  type SecurityPolicy,
 } from '@socle/framework';
 import { sql, type Transaction } from 'kysely';
 
@@ -54,6 +55,8 @@ export interface UpgradeOptions {
   readonly modules: readonly ModuleTarget[];
   /** Where the mandatory snapshot is taken. */
   readonly snapshots: SnapshotStore;
+  /** Security policy once the operation is done: row-level security is rebuilt from it. */
+  readonly security?: SecurityPolicy | undefined;
 }
 
 export interface UpgradeResult {
@@ -130,7 +133,9 @@ export async function upgradeModules(options: UpgradeOptions): Promise<UpgradeRe
           await migration.pre?.(helpers.context(target.name, from ?? '', target.version));
         }
       }
-      const plan = await applySchemaIn(trx, options.registry, helpers.schema());
+      const plan = await applySchemaIn(trx, options.registry, helpers.schema(), {
+        security: options.security,
+      });
       for (const { target, from, migrations } of steps) {
         for (const migration of migrations) {
           await migration.post?.(helpers.context(target.name, from ?? '', target.version));
@@ -179,6 +184,8 @@ export interface UninstallOptions {
   /** Models of the modules to remove, dependents first (reverse dependency order). */
   readonly modules: readonly ModuleModels[];
   readonly snapshots: SnapshotStore;
+  /** Security policy of the remaining modules: row-level security is rebuilt from it. */
+  readonly security?: SecurityPolicy | undefined;
   /** Stores the backup export; called inside the transaction, before any deletion. */
   exportData(data: ModuleExport): Promise<void>;
 }
@@ -269,7 +276,9 @@ export async function uninstallModules(options: UninstallOptions): Promise<Snaps
           trx,
         );
       }
-      await applySchemaIn(trx, options.registry, helpers.schema());
+      await applySchemaIn(trx, options.registry, helpers.schema(), {
+        security: options.security,
+      });
     });
   } catch (error) {
     throw new LifecycleError('Module uninstallation failed and was rolled back', snapshot, error);

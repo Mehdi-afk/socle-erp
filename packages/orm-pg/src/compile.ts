@@ -99,55 +99,128 @@ function textOf(kind: ValueKind, column: Operand): Operand {
   }
 }
 
+/** How values reach the SQL text: bound parameters (queries) or literals (policies). */
+type Bind = (value: unknown) => Operand;
+
+const parameter: Bind = (value) => sql`${value}`;
+
+/**
+ * A rule condition that cannot be expressed in a row-level security policy (relation paths,
+ * placeholders with unsupported operators…): the policy generator replaces it with TRUE.
+ */
+export class NotMirrorable extends Error {}
+
+/** SQL literal of a value (a policy cannot hold bound parameters). */
+const literal: Bind = (value) => {
+  if (value === null) return sql`null`;
+  if (typeof value === 'string') {
+    if (value.includes('\u0000')) throw new NotMirrorable('NUL character');
+    return sql.lit(value);
+  }
+  if (typeof value === 'boolean') return sql.lit(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new NotMirrorable('non-finite number');
+    return sql.lit(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0
+      ? sql`array[]`
+      : sql`array[${sql.join(value.map((item) => literal(item)))}]`;
+  }
+  throw new NotMirrorable('unsupported literal');
+};
+
+const SETTINGS = {
+  id: 'app.user_id',
+  companyId: 'app.company_id',
+  companyIds: 'app.company_ids',
+  groupIds: 'app.group_ids',
+} as const;
+
+/**
+ * A value of the acting user, read from the transaction's session settings in row-level
+ * security policies (`app.user_id`, `app.company_id`, `app.company_ids`, `app.group_ids`).
+ */
+export class SessionValue {
+  constructor(readonly key: keyof typeof SETTINGS) {}
+
+  get list(): boolean {
+    return this.key === 'companyIds' || this.key === 'groupIds';
+  }
+
+  get setting(): Operand {
+    return sql`nullif(current_setting(${sql.lit(SETTINGS[this.key])}, true), '')`;
+  }
+}
+
+/** A condition whose value comes from the session (policy mode only). */
+function sessionScalar(
+  kind: ValueKind,
+  column: Operand,
+  operator: DomainOperator,
+  value: SessionValue,
+): Predicate {
+  if (kind !== 'id' && kind !== 'text') throw new NotMirrorable(`$user value on a ${kind} field`);
+  const text = kind === 'id' ? sql`${column}::text` : column;
+  if (operator === '=' && !value.list) {
+    // As in the ORM: an empty user value (no current company) matches an empty column.
+    return sql<SqlBool>`(case when ${value.setting} is null then ${column} is null else ${text} = ${value.setting} end) is true`;
+  }
+  if (operator === 'in' && value.list) {
+    return sql<SqlBool>`(${text} = any(string_to_array(coalesce(${value.setting}, ''), ','))) is true`;
+  }
+  throw new NotMirrorable(`$user value with operator "${operator}"`);
+}
+
 /** `column = value` with strict (`===`) semantics: a value of another type never matches. */
-function equals(kind: ValueKind, column: Operand, value: unknown): Predicate {
+function equals(kind: ValueKind, column: Operand, value: unknown, bind: Bind): Predicate {
   switch (kind) {
     case 'id':
-      return isRecordId(value) ? sql<SqlBool>`${column} = ${value}::uuid` : FALSE;
+      return isRecordId(value) ? sql<SqlBool>`${column} = ${bind(value)}::uuid` : FALSE;
     case 'number':
       return typeof value === 'number' && Number.isFinite(value)
-        ? sql<SqlBool>`${column} = ${value}::numeric`
+        ? sql<SqlBool>`${column} = ${bind(value)}::numeric`
         : FALSE;
     case 'boolean':
-      return typeof value === 'boolean' ? sql<SqlBool>`${column} = ${value}` : FALSE;
+      return typeof value === 'boolean' ? sql<SqlBool>`${column} = ${bind(value)}` : FALSE;
     case 'decimal':
       // The reference compares the stored strings: "12.30" is not "12.3".
-      return typeof value === 'string' ? sql<SqlBool>`${column}::text = ${value}` : FALSE;
+      return typeof value === 'string' ? sql<SqlBool>`${column}::text = ${bind(value)}` : FALSE;
     case 'date':
       return typeof value === 'string' && isCalendarDate(value)
-        ? sql<SqlBool>`${column} = ${value}::date`
+        ? sql<SqlBool>`${column} = ${bind(value)}::date`
         : FALSE;
     case 'datetime':
       return typeof value === 'string' && isCanonicalInstant(value)
-        ? sql<SqlBool>`${column} = ${value}::timestamptz`
+        ? sql<SqlBool>`${column} = ${bind(value)}::timestamptz`
         : FALSE;
     case 'json':
       return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-        ? sql<SqlBool>`${column} = ${JSON.stringify(value)}::jsonb`
+        ? sql<SqlBool>`${column} = ${bind(JSON.stringify(value))}::jsonb`
         : FALSE;
     case 'text':
-      return typeof value === 'string' ? sql<SqlBool>`${column} = ${value}` : FALSE;
+      return typeof value === 'string' ? sql<SqlBool>`${column} = ${bind(value)}` : FALSE;
   }
 }
 
 /** `column in (values)`: `= any(array)` for the common kinds, so long id lists stay one parameter. */
-function isIn(kind: ValueKind, column: Operand, values: readonly unknown[]): Predicate {
+function isIn(kind: ValueKind, column: Operand, values: readonly unknown[], bind: Bind): Predicate {
   const parts: Predicate[] = [];
   if (values.includes(null)) parts.push(sql<SqlBool>`${column} is null`);
   const present = values.filter((value) => value !== null);
   if (kind === 'id') {
     const ids = [...new Set(present.filter(isRecordId))];
-    if (ids.length > 0) parts.push(sql<SqlBool>`${column} = any(${ids}::uuid[])`);
+    if (ids.length > 0) parts.push(sql<SqlBool>`${column} = any(${bind(ids)}::uuid[])`);
   } else if (kind === 'text') {
     const texts = [...new Set(present.filter((value) => typeof value === 'string'))];
-    if (texts.length > 0) parts.push(sql<SqlBool>`${column} = any(${texts}::text[])`);
+    if (texts.length > 0) parts.push(sql<SqlBool>`${column} = any(${bind(texts)}::text[])`);
   } else if (kind === 'number') {
     const numbers = [
       ...new Set(present.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))),
     ];
-    if (numbers.length > 0) parts.push(sql<SqlBool>`${column} = any(${numbers}::numeric[])`);
+    if (numbers.length > 0) parts.push(sql<SqlBool>`${column} = any(${bind(numbers)}::numeric[])`);
   } else {
-    for (const value of new Set(present)) parts.push(equals(kind, column, value));
+    for (const value of new Set(present)) parts.push(equals(kind, column, value, bind));
   }
   return or(parts);
 }
@@ -163,32 +236,34 @@ function compare(
   column: Operand,
   operator: ComparisonOperator,
   value: unknown,
+  bind: Bind,
 ): Predicate {
   const op = COMPARISON[operator];
   const operand = String(value);
+  const bound = bind(operand);
   const numeric = typeof value === 'number' ? Number.isFinite(value) : isDecimalString(operand);
-  const asText = sql<SqlBool>`(${textOf(kind, column)} collate "C") ${op} ${operand}`;
+  const asText = sql<SqlBool>`(${textOf(kind, column)} collate "C") ${op} ${bound}`;
   switch (kind) {
     case 'number':
       // Two numbers compare as numbers whatever their text form (1e21); NaN matches nothing.
       if (typeof value === 'number') {
-        return Number.isNaN(value) ? FALSE : sql<SqlBool>`${column} ${op} ${operand}::numeric`;
+        return Number.isNaN(value) ? FALSE : sql<SqlBool>`${column} ${op} ${bound}::numeric`;
       }
-      return isDecimalString(operand) ? sql<SqlBool>`${column} ${op} ${operand}::numeric` : asText;
+      return isDecimalString(operand) ? sql<SqlBool>`${column} ${op} ${bound}::numeric` : asText;
     case 'decimal':
       return numeric && isDecimalString(operand)
-        ? sql<SqlBool>`${column} ${op} ${operand}::numeric`
+        ? sql<SqlBool>`${column} ${op} ${bound}::numeric`
         : asText;
     case 'date':
-      return isCalendarDate(operand) ? sql<SqlBool>`${column} ${op} ${operand}::date` : asText;
+      return isCalendarDate(operand) ? sql<SqlBool>`${column} ${op} ${bound}::date` : asText;
     case 'datetime':
       return isCanonicalInstant(operand)
-        ? sql<SqlBool>`${column} ${op} ${operand}::timestamptz`
+        ? sql<SqlBool>`${column} ${op} ${bound}::timestamptz`
         : asText;
     case 'text':
       // A text value that looks like a decimal is compared numerically with a decimal operand.
       return numeric && isDecimalString(operand)
-        ? sql<SqlBool>`case when ${column} ~ ${NUMERIC_TEXT} then ${column}::numeric ${op} ${operand}::numeric else (${column} collate "C") ${op} ${operand} end`
+        ? sql<SqlBool>`case when ${column} ~ ${NUMERIC_TEXT} then ${column}::numeric ${op} ${bound}::numeric else (${column} collate "C") ${op} ${bound} end`
         : asText;
     default:
       return asText;
@@ -196,10 +271,10 @@ function compare(
 }
 
 /** LIKE without escape character: `%` and `_` are the only special characters, as in the reference. */
-function like(column: Operand, pattern: string, caseInsensitive: boolean): Predicate {
+function like(column: Operand, pattern: string, caseInsensitive: boolean, bind: Bind): Predicate {
   return caseInsensitive
-    ? sql<SqlBool>`lower(${column}) like lower(${pattern}) escape ''`
-    : sql<SqlBool>`${column} like ${pattern} escape ''`;
+    ? sql<SqlBool>`lower(${column}) like lower(${bind(pattern)}) escape ''`
+    : sql<SqlBool>`${column} like ${bind(pattern)} escape ''`;
 }
 
 function or(parts: readonly Predicate[]): Predicate {
@@ -220,7 +295,9 @@ function scalar(
   column: Operand,
   operator: DomainOperator,
   value: unknown,
+  bind: Bind,
 ): Predicate {
+  if (value instanceof SessionValue) return sessionScalar(kind, column, operator, value);
   let predicate: Predicate;
   switch (operator) {
     case '=':
@@ -231,24 +308,24 @@ function scalar(
           ? sql<SqlBool>`(${column} = false or ${column} is null)`
           : sql<SqlBool>`${column} is null`;
       }
-      predicate = equals(kind, column, value);
+      predicate = equals(kind, column, value, bind);
       break;
     case 'in':
-      predicate = isIn(kind, column, value as readonly unknown[]);
+      predicate = isIn(kind, column, value as readonly unknown[], bind);
       break;
     case '<':
     case '<=':
     case '>':
     case '>=':
-      predicate = compare(kind, column, operator, value);
+      predicate = compare(kind, column, operator, value, bind);
       break;
     case 'like':
     case 'ilike':
-      predicate = like(textOf(kind, column), `%${String(value)}%`, operator === 'ilike');
+      predicate = like(textOf(kind, column), `%${String(value)}%`, operator === 'ilike', bind);
       break;
     case '=like':
     case '=ilike':
-      predicate = like(textOf(kind, column), String(value), operator === '=ilike');
+      predicate = like(textOf(kind, column), String(value), operator === '=ilike', bind);
       break;
     default:
       throw new SchemaError(`Operator "${operator}" must be compiled through its positive form.`);
@@ -261,8 +338,20 @@ function scalar(
  */
 export class DomainCompiler {
   private counter = 0;
+  private readonly bind: Bind;
 
-  constructor(private readonly registry: ModelRegistry) {}
+  /**
+   * `policy`: compile for a row-level security policy — values become literals, `$user`
+   * values ({@link SessionValue}) read the session settings, and paths through relations are
+   * refused ({@link NotMirrorable}: a policy querying other tables could recurse through
+   * their own policies).
+   */
+  constructor(
+    private readonly registry: ModelRegistry,
+    private readonly mode: 'query' | 'policy' = 'query',
+  ) {
+    this.bind = mode === 'policy' ? literal : parameter;
+  }
 
   /** Alias of the root table of a query. */
   root(): string {
@@ -324,6 +413,12 @@ export class DomainCompiler {
   ): Predicate {
     const [field = '', ...rest] = path;
     const definition = this.field(meta, field);
+    if (
+      this.mode === 'policy' &&
+      (rest.length > 0 || definition.type === 'one2many' || definition.type === 'many2many')
+    ) {
+      throw new NotMirrorable(`path "${path.join('.')}" crosses a relation`);
+    }
 
     if (definition.type === 'one2many' || definition.type === 'many2many') {
       const { source, link, item } = this.children(meta, alias, field, definition);
@@ -337,7 +432,7 @@ export class DomainCompiler {
       }
       // The value is the list of related ids: `= null` means "none", otherwise "some id matches".
       if (operator === '=' && value === null) return none;
-      const matched = scalar('id', item, operator, value);
+      const matched = scalar('id', item, operator, value, this.bind);
       return matched === FALSE
         ? FALSE
         : sql<SqlBool>`exists (select 1 from ${source} where ${link} and ${matched})`;
@@ -349,7 +444,8 @@ export class DomainCompiler {
       );
     }
     const column = this.column(alias, field);
-    if (rest.length === 0) return scalar(kindOf(field, definition), column, operator, value);
+    if (rest.length === 0)
+      return scalar(kindOf(field, definition), column, operator, value, this.bind);
 
     // many2one followed by more steps: the target record must match; a missing target counts
     // as a null value (reference semantics).

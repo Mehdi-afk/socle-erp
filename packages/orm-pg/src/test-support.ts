@@ -15,6 +15,11 @@ export interface TestDatabases {
   create(): Promise<Executor>;
   /** Same, with the database name and a pool on the `postgres` maintenance database. */
   createNamed(): Promise<{ db: Executor; name: string; admin: Executor }>;
+  /**
+   * An empty database owned by a new role that is NOT a superuser (superusers bypass
+   * row-level security), and a pool connected as that role.
+   */
+  createOwned(): Promise<Executor>;
 }
 
 export function useTestDatabases(): TestDatabases {
@@ -43,8 +48,28 @@ export function useTestDatabases(): TestDatabases {
     return { db, name, admin };
   };
 
+  const createOwned = async (): Promise<Executor> => {
+    if (!server) throw new Error('PostgreSQL is not started');
+    const suffix = randomUUID().replaceAll('-', '');
+    const [role, name, password] = [`app_${suffix}`, `test_${suffix}`, randomUUID()];
+    const admin = createPgDatabase({ connectionString: server.url, max: 1 });
+    pools.push(admin);
+    await sql`create role ${sql.id(role)} login nosuperuser nobypassrls password ${sql.lit(password)}`.execute(
+      admin,
+    );
+    await sql`create database ${sql.id(name)} owner ${sql.id(role)}`.execute(admin);
+    const url = new URL(server.url);
+    url.username = role;
+    url.password = password;
+    url.pathname = `/${name}`;
+    const db = createPgDatabase({ connectionString: url.toString(), max: 4 });
+    pools.push(db);
+    return db;
+  };
+
   return {
     createNamed,
+    createOwned,
     async create(): Promise<Executor> {
       return (await createNamed()).db;
     },

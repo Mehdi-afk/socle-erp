@@ -17,6 +17,20 @@ export interface SearchOptions {
 export type StoredValues = Readonly<Record<string, unknown>>;
 
 /**
+ * Who a storage call acts for. SQL storages use it as a second line of defence (PostgreSQL
+ * row-level security); the ORM has already applied the access rules itself.
+ * @public
+ */
+export interface StorageActor {
+  readonly userId: string;
+  /** A superuser call (`env.sudo()`, integrity checks, recomputations). */
+  readonly su: boolean;
+  readonly companyId: string | null;
+  readonly companyIds: readonly string[];
+  readonly groupIds: readonly string[];
+}
+
+/**
  * What the ORM needs from a database. Implemented by the PostgreSQL adapter (server), the
  * SQLite WASM adapter (offline client) and the in-memory reference store (tests).
  * Domains received here only reference stored fields (the ORM rewrites related fields and
@@ -39,4 +53,6 @@ export interface Storage {
   ): Promise<void>;
   update(model: ModelMeta, id: string, values: StoredValues): Promise<void>;
   delete(model: ModelMeta, ids: readonly string[]): Promise<void>;
+  /** The same storage acting for `actor` (optional: storages without row-level security ignore it). */
+  as?(actor: StorageActor): Storage;
 }
