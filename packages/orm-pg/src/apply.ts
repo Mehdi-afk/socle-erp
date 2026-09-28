@@ -68,7 +68,8 @@ const tableSchema = z.object({
   orphan: z.literal(true).optional(),
 });
 
-async function recordedSchema(trx: Transaction<Tables>): Promise<DatabaseSchema | null> {
+/** The schema recorded by the last change (`null` on an empty database). */
+export async function recordedSchema(trx: Transaction<Tables>): Promise<DatabaseSchema | null> {
   const result = await sql<{
     definition: unknown;
   }>`select definition from ${sql.table(SCHEMA_TABLE)} order by table_name`.execute(trx);
@@ -148,31 +149,56 @@ async function run(trx: Transaction<Tables>, operation: SchemaOperation): Promis
   }
 }
 
+/** Takes the schema lock and makes sure the bookkeeping table exists (inside `trx`). */
+export async function prepareSchemaTransaction(trx: Transaction<Tables>): Promise<void> {
+  await sql`select pg_advisory_xact_lock(${SCHEMA_LOCK})`.execute(trx);
+  await sql`create table if not exists ${sql.table(SCHEMA_TABLE)} (table_name text primary key, definition jsonb not null, applied_at timestamptz not null default now())`.execute(
+    trx,
+  );
+}
+
+/** Replaces the recorded schema. */
+export async function recordSchema(
+  trx: Transaction<Tables>,
+  schema: DatabaseSchema,
+): Promise<void> {
+  await sql`delete from ${sql.table(SCHEMA_TABLE)}`.execute(trx);
+  for (const table of schema.tables) {
+    await sql`insert into ${sql.table(SCHEMA_TABLE)} (table_name, definition) values (${table.name}, ${JSON.stringify(table)}::jsonb)`.execute(
+      trx,
+    );
+  }
+}
+
+/**
+ * Applies the additive changes from `previous` to the registry's schema inside `trx` and
+ * records the result. Refuses any destructive change.
+ * @throws {@link SchemaError}
+ */
+export async function applySchemaIn(
+  trx: Transaction<Tables>,
+  registry: ModelRegistry,
+  previous: DatabaseSchema | null,
+): Promise<SchemaPlan> {
+  const plan = diffSchema(previous, buildSchema(registry));
+  if (plan.destructive.length > 0) {
+    throw new SchemaError(
+      `Schema changes need a migration (migrations/<version>/pre.ts or post.ts):\n- ${plan.destructive.join('\n- ')}`,
+    );
+  }
+  for (const operation of plan.operations) await run(trx, operation);
+  await recordSchema(trx, plan.recorded);
+  return plan;
+}
+
 /**
  * Brings the database schema in line with the registry, in one transaction, under an advisory
  * lock. Refuses any destructive change (it needs a hand-written migration first).
  * @throws {@link SchemaError}
  */
 export async function applySchema(db: Executor, registry: ModelRegistry): Promise<SchemaPlan> {
-  const desired = buildSchema(registry);
   return db.transaction().execute(async (trx) => {
-    await sql`select pg_advisory_xact_lock(${SCHEMA_LOCK})`.execute(trx);
-    await sql`create table if not exists ${sql.table(SCHEMA_TABLE)} (table_name text primary key, definition jsonb not null, applied_at timestamptz not null default now())`.execute(
-      trx,
-    );
-    const plan = diffSchema(await recordedSchema(trx), desired);
-    if (plan.destructive.length > 0) {
-      throw new SchemaError(
-        `Schema changes need a migration (migrations/<version>/pre.ts or post.ts):\n- ${plan.destructive.join('\n- ')}`,
-      );
-    }
-    for (const operation of plan.operations) await run(trx, operation);
-    await sql`delete from ${sql.table(SCHEMA_TABLE)}`.execute(trx);
-    for (const table of plan.recorded.tables) {
-      await sql`insert into ${sql.table(SCHEMA_TABLE)} (table_name, definition) values (${table.name}, ${JSON.stringify(table)}::jsonb)`.execute(
-        trx,
-      );
-    }
-    return plan;
+    await prepareSchemaTransaction(trx);
+    return applySchemaIn(trx, registry, await recordedSchema(trx));
   });
 }

@@ -60,5 +60,8 @@ export function createPgDatabase(options: PgDatabaseOptions): Executor {
     options: '-c TimeZone=UTC -c DateStyle=ISO,YMD',
     types,
   });
+  // An idle connection closed by the server (restart, snapshot, restore) must not crash the
+  // process: the pool discards it and opens a new one on next use.
+  pool.on('error', () => undefined);
   return new Kysely<Tables>({ dialect: new PostgresDialect({ pool }) });
 }

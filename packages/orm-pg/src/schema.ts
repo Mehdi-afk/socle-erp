@@ -15,6 +15,9 @@ import { columnName, identifier } from './naming.js';
 /** Table holding the recorded schema (see apply.ts): reserved, no model may use it. */
 export const SCHEMA_TABLE = 'socle_schema';
 
+/** Table of installed modules and their versions (ARCHITECTURE.md §4.4, §4.7): reserved. */
+export const MODULE_TABLE = 'ir_module';
+
 /** PostgreSQL types used by the ORM. */
 export type ColumnType =
   'uuid' | 'text' | 'bigint' | 'integer' | 'numeric' | 'boolean' | 'date' | 'timestamptz' | 'jsonb';
@@ -208,10 +211,12 @@ export function buildSchema(registry: ModelRegistry): DatabaseSchema {
     .filter((meta) => !meta.abstract)
     .flatMap((meta) => modelTable(registry, meta));
 
-  const owners = new Map<string, string>([
-    [SCHEMA_TABLE, 'the ORM'],
-    [`${SCHEMA_TABLE}_pkey`, 'the ORM'],
-  ]);
+  const owners = new Map<string, string>(
+    [SCHEMA_TABLE, MODULE_TABLE].flatMap((reserved) => [
+      [reserved, 'the ORM'],
+      [`${reserved}_pkey`, 'the ORM'],
+    ]),
+  );
   for (const table of tables) {
     const names = [
       table.name,
