@@ -16,6 +16,8 @@ import {
   sha256,
   sign,
   toBase64Url,
+  uuidv7,
+  uuidv7Timestamp,
   utf8,
   verify,
 } from './index.js';
@@ -144,5 +146,27 @@ describe('helpers', () => {
 
   it('rejects invalid UTF-8', () => {
     expect(() => fromUtf8(new Uint8Array([0xff]))).toThrow();
+  });
+});
+
+describe('uuidv7', () => {
+  const FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('has the RFC 9562 layout and embeds the timestamp', () => {
+    const id = uuidv7(1_759_017_600_000);
+    expect(id).toMatch(FORMAT);
+    expect(uuidv7Timestamp(id)).toBe(1_759_017_600_000);
+  });
+
+  it('is strictly increasing, even within the same millisecond or if the clock goes back', () => {
+    const ids = [
+      uuidv7(2_000_000_000_000),
+      uuidv7(2_000_000_000_000),
+      uuidv7(1_000),
+      uuidv7(2_000_000_000_001),
+    ];
+    expect([...ids].sort()).toEqual(ids);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(FORMAT);
   });
 });

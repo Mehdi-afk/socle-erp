@@ -22,3 +22,46 @@ export type {
   TypedField,
 } from './fields.js';
 export { emptyValue, FieldValueError, isRecordId, normalizeValue } from './values.js';
+export { createEnvironment, Environment } from './environment.js';
+export type {
+  AccessControl,
+  AuditEvent,
+  AuditSink,
+  EnvironmentOptions,
+  Operation,
+  ServerCall,
+  UserContext,
+} from './environment.js';
+export {
+  AccessError,
+  FieldNotLoadedError,
+  MissingRecordError,
+  RecordsetError,
+  ServerOnlyError,
+  ValidationError,
+} from './errors.js';
+export { createMemoryStorage } from './memory-storage.js';
+export type { MemoryStorage } from './memory-storage.js';
+export { defineModel, extendModel, ModelDefinitionError, TECHNICAL_FIELDS } from './model.js';
+export type {
+  ConflictPolicy,
+  MethodsFactory,
+  ModelConstraint,
+  ModelDefinition,
+  ModelDefinitionInput,
+  ModelExtension,
+  ModelExtensionInput,
+  RecordsetConstructor,
+  UniqueConstraint,
+} from './model.js';
+export { buildModelRegistry, parseOrder } from './model-registry.js';
+export type {
+  ModelMeta,
+  ModelRegistry,
+  ModuleModels,
+  OrderTerm,
+  RuntimeSide,
+} from './model-registry.js';
+export { Recordset, RECORDSET_MEMBERS } from './recordset.js';
+export type { RecordValues, SearchParams } from './recordset.js';
+export type { SearchOptions, Storage, StoredValues } from './storage.js';

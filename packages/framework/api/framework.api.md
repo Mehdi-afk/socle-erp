@@ -8,7 +8,42 @@ import { SigningPrivateKey } from '@socle/crypto';
 import { SigningPublicKey } from '@socle/crypto';
 
 // @public
+export interface AccessControl {
+    // (undocumented)
+    checkModel(env: Environment, model: string, operation: Operation): void;
+    ruleDomain(env: Environment, model: string, operation: Operation): DomainNode;
+}
+
+// @public
+export class AccessError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
 export function andNodes(...nodes: DomainNode[]): DomainNode;
+
+// @public
+export interface AuditEvent {
+    // (undocumented)
+    readonly at: string;
+    // (undocumented)
+    readonly reason: string;
+    // (undocumented)
+    readonly type: 'sudo';
+    // (undocumented)
+    readonly userId: string;
+}
+
+// @public (undocumented)
+export interface AuditSink {
+    // (undocumented)
+    record(event: AuditEvent): void;
+}
+
+// @public
+export function buildModelRegistry(modules: readonly ModuleModels[], options: {
+    readonly side: RuntimeSide;
+}): ModelRegistry;
 
 // @public
 export type Capability = 'sudo' | 'cron' | 'files' | {
@@ -78,6 +113,9 @@ export interface CommonFieldOptions {
 }
 
 // @public
+export type ConflictPolicy = 'field-lww' | 'server-wins' | 'append-only' | 'manual';
+
+// @public
 export function countersignPackage(pkg: SignedModulePackage, marketplace: {
     readonly keyId: string;
     readonly key: SigningPrivateKey;
@@ -90,7 +128,13 @@ export function createCapabilityGuard(manifest: ModuleManifest, onDenied?: Capab
 export function createCatalog(modules: Iterable<DiscoveredModule>, options?: CatalogOptions): ModuleCatalog;
 
 // @public
+export function createEnvironment(options: EnvironmentOptions): Environment;
+
+// @public
 export function createHttpClient(options: HttpClientOptions): HttpClient;
+
+// @public
+export function createMemoryStorage(registry: ModelRegistry): MemoryStorage;
 
 // @public
 export function createPackageIndex(input: {
@@ -114,6 +158,9 @@ export interface DecimalOptions extends CommonFieldOptions {
 
 // @public
 export function defineManifest(input: ManifestInput): ModuleManifest;
+
+// @public
+export function defineModel(input: ModelDefinitionInput): ModelDefinition;
 
 // @public (undocumented)
 export class DependencyCycleError extends SocleError {
@@ -171,6 +218,43 @@ export class DuplicateModuleError extends SocleError {
 export function emptyValue(definition: FieldDefinition): unknown;
 
 // @public
+export class Environment {
+    // @internal
+    constructor(key: symbol, options: EnvironmentOptions, state: unknown, su: boolean);
+    get companyId(): string | null;
+    flush(): Promise<void>;
+    model(name: string): Recordset;
+    // (undocumented)
+    readonly registry: ModelRegistry;
+    // (undocumented)
+    get side(): RuntimeSide;
+    readonly su: boolean;
+    sudo(reason: string): Environment;
+    // (undocumented)
+    readonly user: UserContext;
+}
+
+// @public (undocumented)
+export interface EnvironmentOptions {
+    // (undocumented)
+    readonly access: AccessControl;
+    // (undocumented)
+    readonly audit: AuditSink;
+    readonly newId?: (() => string) | undefined;
+    readonly now?: (() => string) | undefined;
+    readonly queueServerCall?: ((call: ServerCall) => Promise<unknown>) | undefined;
+    // (undocumented)
+    readonly registry: ModelRegistry;
+    // (undocumented)
+    readonly storage: Storage;
+    // (undocumented)
+    readonly user: UserContext;
+}
+
+// @public
+export function extendModel(name: string, input: ModelExtensionInput): ModelExtension;
+
+// @public
 export const f: Readonly<{
     char: (options?: CharOptions) => TypedField<"char">;
     text: (options?: CommonFieldOptions) => TypedField<"text">;
@@ -223,6 +307,11 @@ export interface FieldDefinition extends CommonFieldOptions {
     readonly size?: number | undefined;
     // (undocumented)
     readonly type: FieldType;
+}
+
+// @public
+export class FieldNotLoadedError extends SocleError {
+    constructor(model: string, field: string);
 }
 
 // @public
@@ -358,6 +447,15 @@ export function matchesCondition(fieldValue: unknown, operator: DomainOperator, 
 // @public
 export function matchesPattern(text: string, pattern: string, caseInsensitive: boolean): boolean;
 
+// @public
+export interface MemoryStorage extends Storage {
+    size(model: string): number;
+    transaction<T>(work: () => Promise<T>): Promise<T>;
+}
+
+// @public
+export type MethodsFactory = (Base: RecordsetConstructor) => RecordsetConstructor;
+
 // @public (undocumented)
 export class MissingDependencyError extends SocleError {
     constructor(moduleName: string, dependency: string);
@@ -365,6 +463,120 @@ export class MissingDependencyError extends SocleError {
     readonly dependency: string;
     // (undocumented)
     readonly moduleName: string;
+}
+
+// @public
+export class MissingRecordError extends SocleError {
+    constructor(model: string, ids: readonly string[]);
+}
+
+// @public
+export interface ModelConstraint {
+    // (undocumented)
+    readonly check: string;
+    // (undocumented)
+    readonly fields: readonly string[];
+}
+
+// @public (undocumented)
+export interface ModelDefinition extends ModelDefinitionInput {
+    // (undocumented)
+    readonly kind: 'define';
+}
+
+// @public
+export class ModelDefinitionError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export interface ModelDefinitionInput {
+    readonly abstract?: boolean | undefined;
+    // (undocumented)
+    readonly constraints?: readonly ModelConstraint[] | undefined;
+    // (undocumented)
+    readonly description?: LocalizedText | undefined;
+    // (undocumented)
+    readonly fields?: Readonly<Record<string, FieldDefinition>> | undefined;
+    readonly inherit?: string | undefined;
+    readonly inherits?: Readonly<Record<string, string>> | undefined;
+    readonly methods?: MethodsFactory | undefined;
+    readonly mixins?: readonly string[] | undefined;
+    readonly name: string;
+    // (undocumented)
+    readonly offline?: {
+        readonly conflict?: ConflictPolicy | undefined;
+        readonly syncable?: boolean | undefined;
+    } | undefined;
+    readonly order?: string | undefined;
+    readonly serverMethods?: MethodsFactory | undefined;
+    // (undocumented)
+    readonly unique?: readonly UniqueConstraint[] | undefined;
+}
+
+// @public (undocumented)
+export interface ModelExtension extends ModelExtensionInput {
+    // (undocumented)
+    readonly kind: 'extend';
+    // (undocumented)
+    readonly name: string;
+}
+
+// @public
+export interface ModelExtensionInput {
+    // (undocumented)
+    readonly constraints?: readonly ModelConstraint[] | undefined;
+    // (undocumented)
+    readonly fields?: Readonly<Record<string, FieldDefinition>> | undefined;
+    // (undocumented)
+    readonly methods?: MethodsFactory | undefined;
+    // (undocumented)
+    readonly mixins?: readonly string[] | undefined;
+    // (undocumented)
+    readonly serverMethods?: MethodsFactory | undefined;
+    // (undocumented)
+    readonly unique?: readonly UniqueConstraint[] | undefined;
+}
+
+// @public
+export interface ModelMeta {
+    // (undocumented)
+    readonly abstract: boolean;
+    // (undocumented)
+    readonly constraints: readonly ModelConstraint[];
+    readonly delegatedFields: ReadonlyMap<string, string>;
+    readonly delegations: ReadonlyMap<string, string>;
+    // (undocumented)
+    readonly description?: LocalizedText | undefined;
+    readonly fields: ReadonlyMap<string, FieldDefinition>;
+    readonly modules: readonly string[];
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly offline: {
+        readonly conflict: ConflictPolicy;
+        readonly syncable: boolean;
+    };
+    // (undocumented)
+    readonly order: readonly OrderTerm[];
+    readonly recordClass: RecordsetConstructor;
+    readonly serverMethodNames: readonly string[];
+    readonly table: string;
+    // (undocumented)
+    readonly unique: readonly UniqueConstraint[];
+}
+
+// @public
+export interface ModelRegistry {
+    field(model: string, field: string): FieldDefinition | undefined;
+    // (undocumented)
+    get(model: string): ModelMeta;
+    // (undocumented)
+    has(model: string): boolean;
+    // (undocumented)
+    names(): readonly string[];
+    // (undocumented)
+    readonly side: RuntimeSide;
 }
 
 // @public
@@ -424,6 +636,14 @@ export interface ModuleManifest {
 }
 
 // @public
+export interface ModuleModels {
+    // (undocumented)
+    readonly models: readonly (ModelDefinition | ModelExtension)[];
+    // (undocumented)
+    readonly module: string;
+}
+
+// @public
 export interface ModulePackageIndex {
     readonly files: Readonly<Record<string, string>>;
     // (undocumented)
@@ -449,6 +669,17 @@ export interface MonetaryOptions extends CommonFieldOptions {
 
 // @public
 export function normalizeValue(name: string, definition: FieldDefinition, value: unknown): unknown;
+
+// @public
+export type Operation = 'read' | 'create' | 'write' | 'unlink';
+
+// @public (undocumented)
+export interface OrderTerm {
+    // (undocumented)
+    readonly direction: 'asc' | 'desc';
+    // (undocumented)
+    readonly field: string;
+}
 
 // @public (undocumented)
 export interface OutboundRequest {
@@ -492,6 +723,53 @@ export function parseDomain(domain: Domain, model: string, resolve: FieldResolve
 
 // @public
 export function parseManifest(value: unknown): ModuleManifest;
+
+// @public
+export function parseOrder(model: string, order: string, fields: ReadonlyMap<string, FieldDefinition>): OrderTerm[];
+
+// @public
+export class Recordset {
+    // (undocumented)
+    [Symbol.iterator](): Iterator<this>;
+    constructor(env: Environment, ids: readonly string[]);
+    browse(ids: readonly string[]): this;
+    create(values: RecordValues | readonly RecordValues[]): Promise<this>;
+    // (undocumented)
+    ensureOne(): this;
+    // (undocumented)
+    readonly env: Environment;
+    // (undocumented)
+    filtered(predicate: (record: this) => boolean): this;
+    get id(): string;
+    // (undocumented)
+    readonly ids: readonly string[];
+    // (undocumented)
+    get length(): number;
+    mapped(field: string): unknown[];
+    get model(): string;
+    prefetch(paths?: readonly string[]): Promise<this>;
+    read(fields?: readonly string[]): Promise<Record<string, unknown>[]>;
+    search(domain?: Domain, params?: SearchParams): Promise<this>;
+    // (undocumented)
+    searchCount(domain?: Domain): Promise<number>;
+    sudo(reason: string): this;
+    unlink(): Promise<void>;
+    write(values: RecordValues): Promise<void>;
+}
+
+// @public
+export const RECORDSET_MEMBERS: readonly string[];
+
+// @public
+export type RecordsetConstructor = new (env: Environment, ids: readonly string[]) => Recordset;
+
+// @public
+export class RecordsetError extends SocleError {
+    constructor(message: string);
+}
+
+// @public
+export type RecordValues = Readonly<Record<string, unknown>>;
 
 // @public
 export interface RelationalField<T extends 'many2one' | 'one2many' | 'many2many', C extends string> extends TypedField<T> {
@@ -556,9 +834,48 @@ export class RevokedModuleError extends SocleError {
 }
 
 // @public
+export type RuntimeSide = 'server' | 'client';
+
+// @public (undocumented)
+export interface SearchOptions {
+    // (undocumented)
+    readonly limit?: number | undefined;
+    // (undocumented)
+    readonly offset?: number | undefined;
+    // (undocumented)
+    readonly order?: readonly OrderTerm[] | undefined;
+}
+
+// @public (undocumented)
+export interface SearchParams {
+    // (undocumented)
+    readonly limit?: number | undefined;
+    // (undocumented)
+    readonly offset?: number | undefined;
+    readonly order?: string | undefined;
+}
+
+// @public
 export interface SelectionField<K extends string> extends TypedField<'selection'> {
     // (undocumented)
     readonly selection: readonly (readonly [K, string])[];
+}
+
+// @public
+export interface ServerCall {
+    // (undocumented)
+    readonly args: readonly unknown[];
+    // (undocumented)
+    readonly ids: readonly string[];
+    // (undocumented)
+    readonly method: string;
+    // (undocumented)
+    readonly model: string;
+}
+
+// @public
+export class ServerOnlyError extends SocleError {
+    constructor(message: string);
 }
 
 // @public
@@ -612,6 +929,30 @@ export class SocleError extends Error {
 }
 
 // @public
+export interface Storage {
+    // (undocumented)
+    count(model: ModelMeta, where: DomainNode): Promise<number>;
+    // (undocumented)
+    delete(model: ModelMeta, ids: readonly string[]): Promise<void>;
+    // (undocumented)
+    insert(model: ModelMeta, rows: readonly {
+        readonly id: string;
+        readonly values: StoredValues;
+    }[]): Promise<void>;
+    read(model: ModelMeta, ids: readonly string[], fields: readonly string[]): Promise<ReadonlyMap<string, StoredValues>>;
+    // (undocumented)
+    search(model: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]>;
+    // (undocumented)
+    update(model: ModelMeta, id: string, values: StoredValues): Promise<void>;
+}
+
+// @public
+export type StoredValues = Readonly<Record<string, unknown>>;
+
+// @public
+export const TECHNICAL_FIELDS: readonly string[];
+
+// @public
 export function topologicalOrder(catalog: ModuleCatalog, names: Iterable<string>): string[];
 
 // @public
@@ -628,6 +969,16 @@ export interface TypedField<T extends FieldType> extends FieldDefinition {
     readonly type: T;
 }
 
+// @public
+export interface UniqueConstraint {
+    // (undocumented)
+    readonly fields: readonly string[];
+    // (undocumented)
+    readonly message?: LocalizedText | undefined;
+    // (undocumented)
+    readonly name: string;
+}
+
 // @public (undocumented)
 export class UnknownModuleError extends SocleError {
     constructor(moduleName: string);
@@ -638,6 +989,28 @@ export class UnknownModuleError extends SocleError {
 // @public
 export class UnsignedModuleError extends SocleError {
     constructor(moduleName: string);
+}
+
+// @public
+export interface UserContext {
+    // (undocumented)
+    readonly companyId: string | null;
+    // (undocumented)
+    readonly companyIds: readonly string[];
+    readonly deviceId?: string | undefined;
+    // (undocumented)
+    readonly groupIds: readonly string[];
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly lang: string;
+    // (undocumented)
+    readonly tz: string;
+}
+
+// @public
+export class ValidationError extends SocleError {
+    constructor(message: string);
 }
 
 // @public (undocumented)

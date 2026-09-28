@@ -14,3 +14,4 @@ export {
   verify,
 } from './signing.js';
 export type { SigningKeyPair, SigningPrivateKey, SigningPublicKey } from './signing.js';
+export { uuidv7, uuidv7Timestamp } from './uuid.js';
