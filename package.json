@@ -1,0 +1,40 @@
+{
+  "name": "socle-erp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Modular open-core ERP, offline-first, FR/DZ — inspired by Odoo, written in TypeScript",
+  "license": "LGPL-3.0-only",
+  "author": "Messaoudene Mehdi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mehdi-afk/socle-erp.git"
+  },
+  "type": "module",
+  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "prepare": "node scripts/install-hooks.mjs",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint . --max-warnings 0",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:spdx": "node scripts/check-spdx.mjs",
+    "check:licenses": "node scripts/check-licenses.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-security": "^4.0.1",
+    "globals": "^17.12.0",
+    "lefthook": "^2.1.14",
+    "prettier": "^3.9.8",
+    "turbo": "^2.11.2",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# Local Git hooks. The same checks run in CI; never bypass them with --no-verify.
+# Requires gitleaks on the PATH (Windows: winget install Gitleaks.Gitleaks).
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+    spdx:
+      glob: '*.{ts,tsx,js,mjs,cjs}'
+      run: node scripts/check-spdx.mjs {staged_files}
+    lint:
+      glob: '*.{ts,tsx,js,mjs,cjs}'
+      run: pnpm exec eslint --max-warnings 0 {staged_files}
+    format:
+      glob: '*.{ts,tsx,js,mjs,cjs,json,yml,yaml}'
+      run: pnpm exec prettier --check {staged_files}

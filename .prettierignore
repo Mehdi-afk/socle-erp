@@ -1,0 +1,10 @@
+# Documentation and legal texts are not reformatted automatically
+*.md
+LICENSE
+COPYING
+
+pnpm-lock.yaml
+node_modules/
+dist/
+coverage/
+.turbo/

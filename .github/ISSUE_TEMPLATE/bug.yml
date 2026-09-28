@@ -1,6 +1,6 @@
-name: "🐞 Bug"
-description: "Signaler un comportement incorrect (hors vulnérabilité de sécurité)."
-labels: ["bug", "triage"]
+name: '🐞 Bug'
+description: 'Signaler un comportement incorrect (hors vulnérabilité de sécurité).'
+labels: ['bug', 'triage']
 body:
   - type: markdown
     attributes:

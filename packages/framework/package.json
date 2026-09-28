@@ -1,0 +1,15 @@
+{
+  "name": "@socle/framework",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isomorphic core: registry, ORM, security, views, i18n",
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

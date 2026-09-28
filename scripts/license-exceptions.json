@@ -1,0 +1,6 @@
+{
+  "minimatch": {
+    "license": "BlueOak-1.0.0",
+    "reason": "Transitive dev-only dependency of eslint/typescript-eslint, never shipped. BlueOak-1.0.0 is a permissive OSI-approved license (no copyleft), compatible with LGPL and proprietary modules."
+  }
+}
