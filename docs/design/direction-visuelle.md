@@ -1,6 +1,6 @@
 # Direction visuelle du client web
 
-- **Statut** : proposition (étape A du lot 2.3), en attente de validation du mainteneur.
+- **Statut** : étape A validée par le mainteneur le 2026-09-28 (décisions au §8). Les étapes B à D restent à valider après les captures de l'étape D.
 - **Portée** : `packages/ui` (design system), `packages/view-engine` (moteur de vues), module `web` (coque).
 - **Source** : trois maquettes d'un designer tiers, utilisées **comme inspiration seulement**. Elles ne sont pas versionnées (`inspiration-ui/` est ignoré par Git). Ce document décrit le langage visuel retenu avec nos propres mots. Il ne reprend ni les noms, ni les logos, ni les illustrations, ni les textes, ni les données des maquettes.
 
@@ -211,3 +211,16 @@ Les icônes viennent de Lucide (ISC), en trait fin. Les flèches et chevrons son
 - **Accent de société** : la même fonction pure refuse un accent qui n'atteint pas 4,5 : 1 avec l'encre ou avec le blanc, et choisit la couleur de texte à poser dessus.
 - **Couleurs en dur** : stylelint refuse toute couleur écrite en dur hors des fichiers de jetons, et toute propriété physique (`left`, `right`, `margin-left`…).
 - **Accessibilité et rendu** : axe-core dans les tests Playwright ; captures de référence en français et en arabe.
+
+## 8. Décisions du mainteneur (2026-09-28)
+
+1. **Ordre de réalisation**, d'accord :
+   1. tests d'isolation multi-client et de signature des modules ;
+   2. lot 2.1 (`base`), puis lot 2.2 (authentification) ;
+   3. étapes B et C pour la fiche et la liste des contacts ;
+   4. lot 2.4 (`mail`), puis le calendrier des activités et l'étape D ;
+   5. arrêt pour validation visuelle.
+2. **Nom affiché** : le mot « Socle », en texte simple, dans la barre latérale et sur l'écran de connexion. Il est remplaçable par un paramètre ; aucun logo pour l'instant.
+3. **Violet de navigation** : fixe, non personnalisable par société.
+4. **Accent par défaut** : le jaune-vert `#EBFF65` pour toute nouvelle société, modifiable ensuite dans la limite des contrôles de contraste.
+5. **Couleurs d'état** : définies à l'étape B, dans des tons sobres distincts de l'accent, et présentées dans le guide de style.
