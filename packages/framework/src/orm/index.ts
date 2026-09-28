@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-export { andNodes, DomainError, matchesCondition, matchesPattern, parseDomain } from './domain.js';
+export {
+  andNodes,
+  DomainError,
+  isDecimalString,
+  matchesCondition,
+  matchesPattern,
+  parseDomain,
+} from './domain.js';
 export type {
   Domain,
   DomainCondition,

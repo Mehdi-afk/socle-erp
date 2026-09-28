@@ -65,6 +65,8 @@ export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
     } else {
       value = row[step] ?? null;
     }
+    // A JSON value is opaque: an array stored in a json field is not a list of related ids.
+    if (definition.type === 'json' && Array.isArray(value)) return [{ json: value }];
     if (rest.length === 0) return [value];
     const ids = Array.isArray(value) ? value : value === null ? [] : [value];
     const next = ids
@@ -93,7 +95,7 @@ export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
     }
   };
 
-  const compare = (a: Row, b: Row, order: readonly OrderTerm[]): number => {
+  const compare = (meta: ModelMeta, a: Row, b: Row, order: readonly OrderTerm[]): number => {
     for (const { field, direction } of order) {
       const x = a[field] ?? null;
       const y = b[field] ?? null;
@@ -102,7 +104,11 @@ export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
       if (x === null) result = 1;
       else if (y === null) result = -1;
       else if (typeof x === 'number' && typeof y === 'number') result = x - y;
+      // Decimals are strings: order them by value ("9" before "10"; "1.5" and "1.50" tie).
+      else if (meta.fields.get(field)?.type === 'decimal')
+        result = Math.sign(Number(x) - Number(y));
       else result = asText(x) < asText(y) ? -1 : 1;
+      if (result === 0) continue;
       return direction === 'asc' ? result : -result;
     }
     return String(a.id) < String(b.id) ? -1 : 1;
@@ -131,7 +137,7 @@ export function createMemoryStorage(registry: ModelRegistry): MemoryStorage {
   return {
     search(meta: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]> {
       const rows = [...table(meta.name).values()].filter((row) => evaluate(meta.name, row, where));
-      rows.sort((a, b) => compare(a, b, options.order ?? meta.order));
+      rows.sort((a, b) => compare(meta, a, b, options.order ?? meta.order));
       const start = options.offset ?? 0;
       const end = options.limit === undefined ? undefined : start + options.limit;
       return Promise.resolve(rows.slice(start, end).map((row) => row.id as string));

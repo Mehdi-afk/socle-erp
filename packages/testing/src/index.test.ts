@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-
 import { describe, expect, it } from 'vitest';
 
-import { PACKAGE_NAME } from './index.js';
+import { POSTGRES_IMAGE } from './index.js';
 
 describe('@socle/testing', () => {
-  it('exposes its package name', () => {
-    expect(PACKAGE_NAME).toBe('@socle/testing');
+  it('pins the PostgreSQL image by digest', () => {
+    expect(POSTGRES_IMAGE).toMatch(/^postgres:18\.\d+-alpine@sha256:[0-9a-f]{64}$/);
   });
 });

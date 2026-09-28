@@ -422,6 +422,9 @@ export class InvalidPackageError extends SocleError {
 }
 
 // @public
+export function isDecimalString(text: string): boolean;
+
+// @public
 export function isRecordId(value: unknown): value is string;
 
 // @public

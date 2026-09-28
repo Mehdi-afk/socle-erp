@@ -113,7 +113,7 @@ S'y ajoutent les **mixins** (`mail.thread`, `sequence.mixin`, `archivable`…) e
 | Excel | **ExcelJS** (formules vivantes, pattern Bio Réactifs) | — |
 | Observabilité | **OpenTelemetry** + logs `pino` avec masquage des données personnelles | — |
 | Monorepo | **pnpm workspaces + Turborepo** | Pattern FleetOra (`packages/shared`) généralisé |
-| Tests | **Vitest**, **Testcontainers** (PostgreSQL réel), **Playwright**, **fast-check** (tests de propriétés de la synchro) | — |
+| Tests | **Vitest**, PostgreSQL réel en conteneur jetable (utilitaire maison `@socle/testing`, ADR 010), **Playwright**, **fast-check** (tests de propriétés de la synchro) | — |
 
 ---
 
