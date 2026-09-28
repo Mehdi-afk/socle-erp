@@ -213,6 +213,16 @@ importers:
         specifier: ^24.13.6
         version: 24.13.6
 
+  modules/base:
+    dependencies:
+      '@socle/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+
   packages/crypto:
     devDependencies:
       fast-check:

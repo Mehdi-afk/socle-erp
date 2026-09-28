@@ -8,6 +8,7 @@ export {
   ruleDomainFor,
   rulesOf,
 } from './permissions.js';
+export { securityRecords } from './records.js';
 export { buildSecurityPolicy, isUserValue, SecurityDefinitionError } from './policy.js';
 export type {
   AccessDefinition,
