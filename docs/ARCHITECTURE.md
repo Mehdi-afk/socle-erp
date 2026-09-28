@@ -107,7 +107,7 @@ S'y ajoutent les **mixins** (`mail.thread`, `sequence.mixin`, `archivable`…) e
 | Bureau / caisse | **Tauri 2** (phase 5) | Plus léger et plus sûr qu'Electron (permissions par capacités) |
 | Mobile | PWA installable, puis **Capacitor** si besoin natif | Un seul code |
 | Recherche | PostgreSQL FTS (`french`, `simple` pour l'arabe) + `pg_trgm` | Pas de moteur externe |
-| Fichiers | Stockage **S3-compatible** (OVH / Scaleway en SaaS, Garage ou SeaweedFS en auto-hébergé) | URL signées, jamais servis depuis le disque web |
+| Fichiers | Stockage **S3-compatible** (OVH / Scaleway en SaaS, **SeaweedFS** par défaut en auto-hébergé, ADR 012) | URL signées, jamais servis depuis le disque web |
 | PDF | Modèles HTML → **Gotenberg** (Chromium en conteneur) | Rendu fidèle, isolé du serveur applicatif |
 | Factur-X | Service **Mustang** (open source, Apache-2.0) en conteneur : génération PDF/A-3 + validation | Référence du marché franco-allemand |
 | Excel | **ExcelJS** (formules vivantes, pattern Bio Réactifs) | — |
@@ -588,7 +588,7 @@ La sécurité est une **procédure qui s'applique à chaque étape**, pas une ph
 | Secrets | gitleaks |
 | Dépendances vulnérables | Dependabot + **OSV-Scanner** |
 | Types, lint, tests | `tsc --noEmit` strict, ESLint (règles sécurité), Vitest, tests d'intégration PostgreSQL réels |
-| Revue | Relecture humaine obligatoire des PR de Claude Code ; checklist sécurité dans le modèle de PR |
+| Revue | Fusion par Claude Code uniquement quand tous les contrôles requis sont verts ; validation humaine à chaque fin de phase ; audit PASSI avant la première version commerciale (ADR 013) ; checklist sécurité dans le modèle de PR |
 | Règles de code | Aucun SQL brut hors du gabarit `sql\`` revu ; noms de colonnes validés par liste blanche (pattern Bio Réactifs) ; aucun `eval`/`new Function` ; aucun `dangerouslySetInnerHTML` sans DOMPurify ; tout chemin de fichier normalisé et confiné (leçon Bio Réactifs : protection contre `..`) ; toute URL sortante contre liste blanche (leçon BioInteraction : SSRF) |
 
 ### 9.3 Sécurité applicative
