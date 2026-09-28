@@ -59,7 +59,7 @@ describe('S3 client on SeaweedFS', () => {
   let s3: EphemeralS3;
   beforeAll(async () => {
     s3 = await startSeaweedfs();
-  }, 120_000);
+  });
   afterAll(async () => {
     await s3.stop();
   });

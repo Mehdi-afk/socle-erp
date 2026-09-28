@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
+export { ClamavError, pingClamav, scanWithClamav } from './clamav.js';
+export type { ClamavConfig, ScanResult } from './clamav.js';
 export { compose, moduleData } from './compose.js';
 export type { Composition } from './compose.js';
 export { loadModules, ModuleLoadError } from './loader.js';
