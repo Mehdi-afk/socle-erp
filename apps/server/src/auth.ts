@@ -135,7 +135,7 @@ export async function login(
   password: string,
   policy: SessionPolicy = DEFAULT_SESSION_POLICY,
   now: Date = new Date(),
-): Promise<{ readonly token: string; readonly expiresAt: Date }> {
+): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
   const rows = await sql<{
     id: string;
     password_hash: string;
@@ -173,7 +173,7 @@ export async function login(
   await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at) values (${tokenHash(token)}, ${user.id}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz)`.execute(
     db,
   );
-  return { token, expiresAt };
+  return { token, expiresAt, userId: user.id };
 }
 
 /**

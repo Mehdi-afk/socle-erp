@@ -20,6 +20,7 @@ import {
 import { sql, type Transaction } from 'kysely';
 
 import { applySchemaIn, prepareSchemaTransaction, recordedSchema } from './apply.js';
+import { appendAudit } from './audit.js';
 import { loadModuleData, unloadModuleData, type DataLoadResult } from './data.js';
 import type { Executor, Tables } from './database.js';
 import { SchemaError } from './errors.js';
@@ -89,6 +90,8 @@ export interface UpgradeOptions {
   readonly security?: SecurityPolicy | undefined;
   /** Where the superuser work of the data loading is recorded. */
   readonly audit?: AuditSink | undefined;
+  /** Who runs the operation, for the audit journal (e.g. `cli`, a user id). */
+  readonly actor?: string | undefined;
 }
 
 export interface UpgradeResult {
@@ -194,6 +197,20 @@ export async function upgradeModules(options: UpgradeOptions): Promise<UpgradeRe
           trx,
         );
       }
+      const installed = steps.filter((s) => s.from === null).map((s) => s.target.name);
+      const upgraded = steps.flatMap((s) =>
+        s.from === null ? [] : [{ name: s.target.name, from: s.from, to: s.target.version }],
+      );
+      await appendAudit(trx, [
+        {
+          at: new Date().toISOString(),
+          userId: options.actor ?? null,
+          kind: installed.length > 0 ? 'module.install' : 'module.upgrade',
+          model: null,
+          recordIds: [],
+          details: { installed, upgraded, snapshot: snapshot.name },
+        },
+      ]);
       return {
         snapshot,
         plan,
@@ -239,6 +256,8 @@ export interface UninstallOptions {
   exportData(data: ModuleExport): Promise<void>;
   /** Where the superuser work of the data removal is recorded. */
   readonly audit?: AuditSink | undefined;
+  /** Who runs the operation, for the audit journal. */
+  readonly actor?: string | undefined;
 }
 
 /** What a module owns in the database: whole models, and fields added to other models. */
@@ -342,6 +361,16 @@ export async function uninstallModules(options: UninstallOptions): Promise<Snaps
       await applySchemaIn(trx, options.registry, helpers.schema(), {
         security: options.security,
       });
+      await appendAudit(trx, [
+        {
+          at: new Date().toISOString(),
+          userId: options.actor ?? null,
+          kind: 'module.uninstall',
+          model: null,
+          recordIds: [],
+          details: { modules: options.modules.map((m) => m.module), snapshot: snapshot.name },
+        },
+      ]);
     });
   } catch (error) {
     throw new LifecycleError('Module uninstallation failed and was rolled back', snapshot, error);

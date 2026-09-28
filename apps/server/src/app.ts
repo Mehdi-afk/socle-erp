@@ -15,6 +15,7 @@ import {
   ModelDefinitionError,
   ValidationError,
   type Environment,
+  type AuditEvent,
   type FieldDefinition,
   type UserContext,
 } from '@socle/framework';
@@ -23,6 +24,8 @@ import {
   createPgStorage,
   createPgSyncBackend,
   deviceStatus,
+  appendAudit,
+  auditEntry,
   registerDevice,
   translateCommitError,
 } from '@socle/orm-pg';
@@ -246,6 +249,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       tenant.db
         .transaction()
         .execute(async (trx) => {
+          const events: AuditEvent[] = [];
           const pg = createPgSession(trx);
           const env = createEnvironment({
             registry: tenant.registry,
@@ -254,28 +258,64 @@ export function buildServer(options: ServerOptions): FastifyInstance {
             access: tenant.access,
             audit: {
               record: (event) => {
-                request.log.info({ audit: event }, 'sudo');
+                events.push(event);
+                if (event.type === 'sudo') request.log.info({ audit: event }, 'sudo');
               },
             },
           });
           const result = await work({ env, backend: createPgSyncBackend(pg, tenant.registry) });
           await env.flush();
+          // Written in the same transaction: journaled if and only if it happened.
+          await appendAudit(trx, events.map(auditEntry));
           return result;
         })
         .catch((error: unknown) => {
           throw translateCommitError(error);
         });
 
+  /** One journal entry in a transaction of its own (sign-in events). */
+  const journal = (
+    request: FastifyRequest,
+    entry: { userId: string | null; kind: string; details: Record<string, string> },
+  ): Promise<void> =>
+    tenantOf(request)
+      .db.transaction()
+      .execute((trx) =>
+        appendAudit(trx, [
+          {
+            at: new Date().toISOString(),
+            userId: entry.userId,
+            kind: entry.kind,
+            model: null,
+            recordIds: [],
+            details: entry.details,
+          },
+        ]),
+      );
+
   // ─── authentication ──────────────────────────────────────────────────────────────────
   app.post('/auth/login', async (request, reply) => {
     const body = loginBody.parse(request.body);
     try {
-      const { token } = await login(tenantOf(request).db, body.login, body.password, session);
+      const { token, userId } = await login(
+        tenantOf(request).db,
+        body.login,
+        body.password,
+        session,
+      );
+      await journal(request, { userId, kind: 'login', details: {} });
       void reply.header('set-cookie', sessionCookie(token, session.absoluteMs));
       return { ok: true };
     } catch (error) {
-      if (error instanceof LoginError)
+      if (error instanceof LoginError) {
+        // The attempted login, truncated: who was targeted, never the password.
+        await journal(request, {
+          userId: null,
+          kind: 'login_failed',
+          details: { login: body.login.slice(0, 254) },
+        });
         throw new HttpError(401, 'invalid_credentials', error.message);
+      }
       throw error;
     }
   });

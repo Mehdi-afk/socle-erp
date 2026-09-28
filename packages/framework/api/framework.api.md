@@ -41,16 +41,27 @@ export function andNodes(...nodes: DomainNode[]): DomainNode;
 export function applyViewChanges(arch: ViewNode, changes: readonly ViewChange[], context: string): ViewNode;
 
 // @public
-export interface AuditEvent {
-    // (undocumented)
-    readonly at: string;
-    // (undocumented)
-    readonly reason: string;
-    // (undocumented)
+export type AuditEvent = {
     readonly type: 'sudo';
-    // (undocumented)
     readonly userId: string;
-}
+    readonly reason: string;
+    readonly at: string;
+} | {
+    readonly type: 'create' | 'write' | 'unlink';
+    readonly userId: string;
+    readonly su: boolean;
+    readonly model: string;
+    readonly ids: readonly string[];
+    readonly fields: readonly string[];
+    readonly at: string;
+} | {
+    readonly type: 'read_sensitive';
+    readonly userId: string;
+    readonly model: string;
+    readonly ids: readonly string[];
+    readonly fields: readonly string[];
+    readonly at: string;
+};
 
 // @public (undocumented)
 export interface AuditSink {

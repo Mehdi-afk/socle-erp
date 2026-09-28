@@ -59,12 +59,33 @@ export interface AccessControl {
  * An audit event written by the ORM.
  * @public
  */
-export interface AuditEvent {
-  readonly type: 'sudo';
-  readonly userId: string;
-  readonly reason: string;
-  readonly at: string;
-}
+export type AuditEvent =
+  | {
+      readonly type: 'sudo';
+      readonly userId: string;
+      readonly reason: string;
+      readonly at: string;
+    }
+  | {
+      /** A change made through the ORM (field names only: values never go to the journal). */
+      readonly type: 'create' | 'write' | 'unlink';
+      readonly userId: string;
+      /** Made with superuser rights. */
+      readonly su: boolean;
+      readonly model: string;
+      readonly ids: readonly string[];
+      readonly fields: readonly string[];
+      readonly at: string;
+    }
+  | {
+      /** Values of `sensitive` fields handed out (ARCHITECTURE.md §9.3, loi 25-11). */
+      readonly type: 'read_sensitive';
+      readonly userId: string;
+      readonly model: string;
+      readonly ids: readonly string[];
+      readonly fields: readonly string[];
+      readonly at: string;
+    };
 
 /** @public */
 export interface AuditSink {
@@ -711,9 +732,38 @@ export class Runtime {
       records,
       names.filter((name) => name !== 'id'),
     );
+    const sensitive = names.filter((name) => meta.fields.get(name)?.sensitive === true);
+    if (sensitive.length > 0 && records.ids.length > 0) {
+      this.options.audit.record({
+        type: 'read_sensitive',
+        userId: this.env.user.id,
+        model: meta.name,
+        ids: [...records.ids],
+        fields: sensitive,
+        at: this.now(),
+      });
+    }
     return records.ids.map((id) =>
       Object.fromEntries(names.map((name) => [name, this.rawValue(meta, id, name)])),
     );
+  }
+
+  private auditChange(
+    type: 'create' | 'write' | 'unlink',
+    model: string,
+    ids: readonly string[],
+    fields: readonly string[],
+  ): void {
+    if (ids.length === 0) return;
+    this.options.audit.record({
+      type,
+      userId: this.env.user.id,
+      su: this.env.su,
+      model,
+      ids: [...ids],
+      fields: [...new Set(fields)].sort(),
+      at: this.now(),
+    });
   }
 
   async create<R extends Recordset>(records: R, list: readonly RecordValues[]): Promise<R> {
@@ -828,6 +878,12 @@ export class Runtime {
     await this.checkRequired(meta, ids, [...meta.fields.keys()]);
     await this.checkConstraints(meta, ids, [...meta.fields.keys()]);
     await this.checkRecords(meta, ids, 'create');
+    this.auditChange(
+      'create',
+      meta.name,
+      ids,
+      list.flatMap((values) => Object.keys(values)),
+    );
     return records.browse(ids);
   }
 
@@ -841,6 +897,7 @@ export class Runtime {
       this.setField(records, name, value);
     }
     await this.flush();
+    this.auditChange('write', meta.name, records.ids, Object.keys(values));
   }
 
   async flush(): Promise<void> {
@@ -968,6 +1025,7 @@ export class Runtime {
     }
     this.invalidateComputed();
     await this.runRecomputes();
+    this.auditChange('unlink', meta.name, ids, []);
   }
 
   async callServer(records: Recordset, method: string, args: readonly unknown[]): Promise<unknown> {
