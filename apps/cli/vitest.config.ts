@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -7,5 +7,8 @@ export default defineConfig({
     globalSetup: ['./src/global-setup.ts'],
     // Module installs take snapshots (database copies): slower than a unit test.
     testTimeout: 60_000,
+    // Modules written by the tests (with their own tests) live in .tmp-tests: never collected,
+    // even when an interrupted run left some behind.
+    exclude: [...configDefaults.exclude, '.tmp-tests/**'],
   },
 });
