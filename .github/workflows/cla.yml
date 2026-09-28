@@ -36,9 +36,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: write        # update signatures.json on the cla-signatures branch
-      statuses: write        # set the "cla" commit status
-      pull-requests: write   # post the instructions comment
+      contents: write # update signatures.json on the cla-signatures branch
+      statuses: write # set the "cla" commit status
+      pull-requests: write # post the instructions comment
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -47,11 +47,11 @@ jobs:
       COMMENT_BODY: ${{ github.event.comment.body }}
       COMMENTER_ID: ${{ github.event.comment.user.id }}
       COMMENT_ID: ${{ github.event.comment.id }}
-      ALLOWLIST: "Mehdi-afk dependabot[bot] renovate[bot] github-actions[bot]"
-      PHRASE: "I have read the CLA Document and I hereby sign the CLA"
+      ALLOWLIST: 'Mehdi-afk dependabot[bot] renovate[bot] github-actions[bot]'
+      PHRASE: 'I have read the CLA Document and I hereby sign the CLA'
       BRANCH: cla-signatures
       FILE: signatures.json
-      MARKER: "<!-- socle-cla -->"
+      MARKER: '<!-- socle-cla -->'
     steps:
       - name: Check CLA signature
         shell: bash

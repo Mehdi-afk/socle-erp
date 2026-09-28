@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# Secrets (gitleaks), vulnerable dependencies (OSV-Scanner) and SAST (Semgrep CE).
+# Tools are downloaded at a pinned version and verified against a pinned SHA-256
+# (or pulled by image digest) — no third-party action is executed.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '41 4 * * *'
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  OSV_SCANNER_VERSION: 2.6.0
+  OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+  SEMGREP_IMAGE: semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
+
+jobs:
+  security:
+    name: security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history
+          persist-credentials: false
+
+      - name: Install gitleaks and OSV-Scanner (checksum-verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz -C bin gitleaks
+          curl -sSfL -o bin/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  bin/osv-scanner" | sha256sum -c -
+          chmod +x bin/osv-scanner
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: gitleaks (full history)
+        run: gitleaks git --redact --no-banner --verbose .
+
+      - name: OSV-Scanner (lockfile)
+        run: osv-scanner scan source --lockfile pnpm-lock.yaml
+
+      - name: Semgrep CE
+        run: |
+          docker run --rm --network=host -v "$PWD:/src:ro" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --metrics=off --error --disable-version-check \
+              --config p/default --config p/typescript --config p/github-actions \
+              --config .semgrep/

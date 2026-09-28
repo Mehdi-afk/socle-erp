@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+#
+# PREPARED, INACTIVE (ARCHITECTURE.md §9.4) — activated in phase 4.
+# To activate: set the repository variable RELEASE_ENABLED=true and add a `push: branches: [main]`
+# trigger. Until then the jobs are skipped even on manual dispatch.
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/mehdi-afk/socle-erp
+  TRIVY_VERSION: 0.74.0
+  TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+
+jobs:
+  release-please:
+    if: vars.RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          release-type: node
+
+  publish:
+    needs: release-please
+    if: vars.RELEASE_ENABLED == 'true' && needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # attach SBOM to the release
+      packages: write # push images to GHCR
+      id-token: write # keyless cosign signing and provenance attestations
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-release-assets: false
+
+      - name: Build and push image
+        id: image
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker build -f deploy/images/server.Dockerfile -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          echo "digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$TAG" | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan (checksum-verified)
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz trivy
+          ./trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE:$TAG"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image (keyless)
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attach SBOM to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" sbom.cdx.json

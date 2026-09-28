@@ -16,6 +16,7 @@ Toute contribution externe exige la signature du [CLA](CLA.md). Le contrôle `cl
 ## Environnement
 
 - Node.js 24 LTS, pnpm (via `corepack enable`), Docker (tests d'intégration).
+- [gitleaks](https://github.com/gitleaks/gitleaks) dans le `PATH` (Windows : `winget install Gitleaks.Gitleaks`) : les hooks lefthook, installés par `pnpm install`, l'appellent avant chaque commit.
 - Commits **signés** (SSH ou GPG).
 
 ## Règles

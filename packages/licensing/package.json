@@ -1,0 +1,15 @@
+{
+  "name": "@socle/licensing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Offline verification of Pro and third-party license keys",
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}
