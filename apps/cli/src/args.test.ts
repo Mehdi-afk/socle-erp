@@ -28,7 +28,9 @@ describe('command line', () => {
       kind: 'module.install',
       tenant: 'acme',
       modules: ['sale', 'stock'],
+      demo: false,
     });
+    expect(command('module install acme sale --demo')).toMatchObject({ demo: true });
     expect(command('module upgrade acme')).toEqual({
       kind: 'module.upgrade',
       tenant: 'acme',
@@ -68,6 +70,7 @@ describe('command line', () => {
       'scaffold module',
       'scaffold module a b',
       'module list acme --force',
+      'module upgrade acme --demo',
     ]) {
       expect(() => command(line), line).toThrow(UsageError);
     }

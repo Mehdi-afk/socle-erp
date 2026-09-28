@@ -9,6 +9,8 @@
 //   views/*.ts                       a view definition or extension, or an array of them
 //   security/groups.ts|access.ts|rules.ts   an array of groups, access rights or record rules
 //   migrations/<version>/pre.ts|post.ts     an async function (context) => void
+//   data/*.ts                        defineData(model, records), or an array of them (in file order)
+//   demo/*.ts                        same, loaded only when demo data is asked for explicitly
 //
 // Only local, trusted source modules are loaded here (their code runs in this process);
 // signed third-party packages go through framework/trust (marketplace, later phase).
@@ -26,6 +28,7 @@ import {
   type ModelDefinition,
   type ModelExtension,
   type ModuleCatalog,
+  type ModuleData,
   type ModuleManifest,
   type ModuleModels,
   type ModuleSecurity,
@@ -52,6 +55,10 @@ export interface LoadedModule {
   readonly security: ModuleSecurity;
   /** Hand-written migrations, by version. */
   readonly migrations: readonly ModuleMigration[];
+  /** Records loaded at installation and kept up to date (`data/`, in file order). */
+  readonly data: readonly ModuleData[];
+  /** Demonstration records (`demo/`), never loaded unless asked for. */
+  readonly demo: readonly ModuleData[];
 }
 
 export interface ModuleSet {
@@ -122,6 +129,21 @@ function checkArray(file: string, what: string, value: unknown): readonly object
   return value;
 }
 
+async function loadData(root: string, dir: string): Promise<ModuleData[]> {
+  const sets: ModuleData[] = [];
+  for (const file of await sources(dir)) {
+    for (const item of items(await defaultExport(root, file))) {
+      if (!isRecord(item) || item.kind !== 'data' || typeof item.model !== 'string') {
+        throw new ModuleLoadError(
+          `${file}: every default export entry must come from defineData().`,
+        );
+      }
+      sets.push(item as unknown as ModuleData);
+    }
+  }
+  return sets;
+}
+
 type Step = (context: MigrationContext) => Promise<void>;
 
 async function loadMigrations(root: string, dir: string): Promise<ModuleMigration[]> {
@@ -182,6 +204,8 @@ async function loadModule(root: string, path: string, manifest: ModuleManifest) 
     views: { module: name, views },
     security,
     migrations: await loadMigrations(root, join(path, 'migrations')),
+    data: await loadData(root, join(path, 'data')),
+    demo: await loadData(root, join(path, 'demo')),
   };
 }
 

@@ -220,11 +220,24 @@ export function createPackageIndex(input: {
 // @public
 export function createTrustStore(marketplaceKeys: Readonly<Record<string, string>>): Promise<TrustStore>;
 
+// @public
+export interface DataRecord {
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly values: Readonly<Record<string, unknown>>;
+}
+
 // @public (undocumented)
 export interface DecimalOptions extends CommonFieldOptions {
     // (undocumented)
     readonly digits?: readonly [number, number] | undefined;
 }
+
+// @public
+export function defineData(model: string, records: readonly DataRecord[], options?: {
+    readonly noupdate?: boolean;
+}): ModuleData;
 
 // @public
 export function defineManifest(input: ManifestInput): ModuleManifest;
@@ -346,6 +359,12 @@ export type ExtensionClass<N extends string, F> = new (env: Environment, ids: re
 export type ExtensionFieldsOf<M extends string> = ({
     [Module in keyof ModelExtensions]: M extends keyof ModelExtensions[Module] ? (fields: ModelExtensions[Module][M]) => void : never;
 }[keyof ModelExtensions] extends (fields: infer I) => void ? I : never) extends infer All ? [All] extends [never] ? unknown : All : never;
+
+// @public
+export interface ExternalRef {
+    // (undocumented)
+    readonly $ref: string;
+}
 
 // @public
 export const f: Readonly<{
@@ -534,6 +553,12 @@ export class InvalidPackageError extends SocleError {
 export function isDecimalString(text: string): boolean;
 
 // @public
+export function isExternalId(value: string): boolean;
+
+// @public
+export function isExternalRef(value: unknown): value is ExternalRef;
+
+// @public
 export function isRecordId(value: unknown): value is string;
 
 // @public
@@ -715,6 +740,7 @@ export interface ModelMeta {
     // (undocumented)
     readonly description?: LocalizedText | undefined;
     readonly fields: ReadonlyMap<string, FieldDefinition>;
+    readonly mixins: readonly string[];
     readonly modules: readonly string[];
     // (undocumented)
     readonly name: string;
@@ -755,6 +781,17 @@ export interface ModuleCatalog {
     has(name: string): boolean;
     // (undocumented)
     names(): readonly string[];
+}
+
+// @public
+export interface ModuleData {
+    // (undocumented)
+    readonly kind: 'data';
+    // (undocumented)
+    readonly model: string;
+    readonly noupdate: boolean;
+    // (undocumented)
+    readonly records: readonly DataRecord[];
 }
 
 // @public
@@ -979,6 +1016,9 @@ export type RecordsetOf<M extends string> = Recordset & FieldsOfModel<M>;
 export type RecordValues = Readonly<Record<string, unknown>>;
 
 // @public
+export function ref(externalId: string): ExternalRef;
+
+// @public
 export interface RelationalField<T extends 'many2one' | 'one2many' | 'many2many', C extends string> extends TypedField<T> {
     // (undocumented)
     readonly comodel: C;
@@ -1061,7 +1101,10 @@ export interface RuleDefinition {
 export type RuleDomain = readonly (RuleCondition | '&' | '|' | '!')[];
 
 // @public
-export function ruleDomainFor(policy: SecurityPolicy, user: UserContext, groups: ReadonlySet<string>, model: string, operation: Operation, resolve: FieldResolver): DomainNode;
+export function ruleDomainFor(policy: SecurityPolicy, user: UserContext, groups: ReadonlySet<string>, model: string, operation: Operation, resolve: FieldResolver, mixins?: readonly string[]): DomainNode;
+
+// @public
+export function rulesOf(policy: SecurityPolicy, model: string, mixins?: readonly string[]): readonly RuleDefinition[];
 
 // @public
 export type RuntimeSide = 'server' | 'client';

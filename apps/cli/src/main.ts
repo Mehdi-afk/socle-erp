@@ -51,7 +51,7 @@ async function run(command: Command, io: Io): Promise<boolean> {
       await moduleList(context, command.tenant);
       return true;
     case 'module.install':
-      await moduleInstall(context, command.tenant, command.modules);
+      await moduleInstall(context, command.tenant, command.modules, command.demo);
       return true;
     case 'module.upgrade':
       await moduleUpgrade(context, command.tenant, command.modules);

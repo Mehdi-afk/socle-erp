@@ -27,7 +27,8 @@ export function createAccessControl(
     },
     ruleDomain(env: Environment, model: string, operation: Operation) {
       const groups = effectiveGroups(policy, env.user.groupIds);
-      return ruleDomainFor(policy, env.user, groups, model, operation, resolve);
+      const mixins = registry.has(model) ? registry.get(model).mixins : [];
+      return ruleDomainFor(policy, env.user, groups, model, operation, resolve, mixins);
     },
   };
 }

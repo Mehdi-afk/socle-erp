@@ -5,21 +5,29 @@
 // migrations, automatic schema changes, module versions. On failure the transaction is
 // rolled back and the error carries the snapshot to restore if needed.
 import {
+  buildSecurityPolicy,
+  createAccessControl,
+  createEnvironment,
   isStoredColumn,
   SocleError,
+  type AuditSink,
+  type Environment,
   type ModelRegistry,
+  type ModuleData,
   type ModuleModels,
   type SecurityPolicy,
 } from '@socle/framework';
 import { sql, type Transaction } from 'kysely';
 
 import { applySchemaIn, prepareSchemaTransaction, recordedSchema } from './apply.js';
+import { loadModuleData, unloadModuleData, type DataLoadResult } from './data.js';
 import type { Executor, Tables } from './database.js';
 import { SchemaError } from './errors.js';
 import { migrationHelpers, migrationsBetween, type ModuleMigration } from './migrations.js';
 import { columnName, identifier } from './naming.js';
 import { MODULE_TABLE, type SchemaPlan } from './schema.js';
 import type { SnapshotLabel, SnapshotRef, SnapshotStore } from './snapshot.js';
+import { createPgStorage } from './storage.js';
 
 /**
  * A module operation failed; the database is unchanged (rolled back) and `snapshot` is the
@@ -45,6 +53,28 @@ export interface ModuleTarget {
   readonly version: string;
   /** Its `migrations/<version>/` steps (only run on upgrades). */
   readonly migrations?: readonly ModuleMigration[] | undefined;
+  /** Its `data/` records, loaded (or updated) after the schema changes. */
+  readonly data?: readonly ModuleData[] | undefined;
+}
+
+/**
+ * A superuser ORM environment of the lifecycle transaction, to load or remove module data.
+ * Every sudo is recorded in `audit` (default: nowhere).
+ */
+function systemEnvironment(
+  trx: Transaction<Tables>,
+  registry: ModelRegistry,
+  security: SecurityPolicy | undefined,
+  audit: AuditSink | undefined,
+  reason: string,
+): Environment {
+  return createEnvironment({
+    registry,
+    storage: createPgStorage(trx, registry),
+    user: { id: 'system', groupIds: [], companyIds: [], companyId: null, lang: 'fr', tz: 'UTC' },
+    access: createAccessControl(security ?? buildSecurityPolicy([], () => false), registry),
+    audit: audit ?? { record: () => undefined },
+  }).sudo(reason);
 }
 
 export interface UpgradeOptions {
@@ -57,6 +87,8 @@ export interface UpgradeOptions {
   readonly snapshots: SnapshotStore;
   /** Security policy once the operation is done: row-level security is rebuilt from it. */
   readonly security?: SecurityPolicy | undefined;
+  /** Where the superuser work of the data loading is recorded. */
+  readonly audit?: AuditSink | undefined;
 }
 
 export interface UpgradeResult {
@@ -68,6 +100,8 @@ export interface UpgradeResult {
     readonly from: string;
     readonly to: string;
   }[];
+  /** Module data loaded, per module. */
+  readonly data: Readonly<Record<string, DataLoadResult>>;
 }
 
 async function ensureModuleTable(trx: Transaction<Tables>): Promise<void> {
@@ -141,6 +175,20 @@ export async function upgradeModules(options: UpgradeOptions): Promise<UpgradeRe
           await migration.post?.(helpers.context(target.name, from ?? '', target.version));
         }
       }
+      const data: Record<string, DataLoadResult> = {};
+      if (steps.some(({ target }) => (target.data ?? []).length > 0)) {
+        const env = systemEnvironment(
+          trx,
+          options.registry,
+          options.security,
+          options.audit,
+          'module data loading',
+        );
+        for (const { target } of steps) {
+          if ((target.data ?? []).length === 0) continue;
+          data[target.name] = await loadModuleData(trx, env, target.name, target.data ?? []);
+        }
+      }
       for (const { target } of steps) {
         await sql`insert into ${sql.table(MODULE_TABLE)} (name, version) values (${target.name}, ${target.version}) on conflict (name) do update set version = excluded.version, updated_at = now()`.execute(
           trx,
@@ -153,6 +201,7 @@ export async function upgradeModules(options: UpgradeOptions): Promise<UpgradeRe
         upgraded: steps.flatMap((s) =>
           s.from === null ? [] : [{ name: s.target.name, from: s.from, to: s.target.version }],
         ),
+        data,
       };
     });
   } catch (error) {
@@ -188,6 +237,8 @@ export interface UninstallOptions {
   readonly security?: SecurityPolicy | undefined;
   /** Stores the backup export; called inside the transaction, before any deletion. */
   exportData(data: ModuleExport): Promise<void>;
+  /** Where the superuser work of the data removal is recorded. */
+  readonly audit?: AuditSink | undefined;
 }
 
 /** What a module owns in the database: whole models, and fields added to other models. */
@@ -267,6 +318,18 @@ export async function uninstallModules(options: UninstallOptions): Promise<Snaps
           columns,
         });
 
+        // Records the module loaded into models that stay installed go away with it.
+        await unloadModuleData(
+          trx,
+          systemEnvironment(
+            trx,
+            options.registry,
+            options.security,
+            options.audit,
+            `uninstallation of ${module.module}`,
+          ),
+          module.module,
+        );
         const context = helpers.context(module.module, version, version);
         for (const [model, field] of fields) {
           if (!models.includes(model)) await context.dropColumn(model, field);

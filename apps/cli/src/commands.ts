@@ -12,6 +12,7 @@ import {
   installedModules,
   uninstallModules,
   upgradeModules,
+  type DataLoadResult,
   type Executor,
   type ModuleExport,
   type SnapshotStore,
@@ -169,6 +170,14 @@ export async function dbRestore(
 
 // ─── module ──────────────────────────────────────────────────────────────────────────────
 
+function reportData(context: Context, data: Readonly<Record<string, DataLoadResult>>): void {
+  for (const [module, counts] of Object.entries(data)) {
+    context.out.line(
+      `Data of ${module}: ${String(counts.created)} created, ${String(counts.updated)} updated, ${String(counts.kept)} kept.`,
+    );
+  }
+}
+
 export async function moduleList(context: Context, tenant: string): Promise<void> {
   const set = await loadModules(context.config.moduleRoots);
   const installed = await withTenant(context, tenant, (t) => installedModules(t.db));
@@ -193,6 +202,7 @@ export async function moduleInstall(
   context: Context,
   tenant: string,
   requested: readonly string[],
+  demo = false,
 ): Promise<void> {
   const set = await loadModules(context.config.moduleRoots);
   await withTenant(context, tenant, async (t) => {
@@ -207,11 +217,19 @@ export async function moduleInstall(
       registry,
       security,
       snapshots: t.snapshots,
-      modules: plan.install.map((name) => ({ name, version: set.catalog.get(name).version })),
+      modules: plan.install.map((name) => {
+        const module = set.get(name);
+        return {
+          name,
+          version: module.manifest.version,
+          data: demo ? [...module.data, ...module.demo] : module.data,
+        };
+      }),
     });
     context.out.line(
       `Installed ${result.installed.join(', ')} (snapshot ${result.snapshot.name}).`,
     );
+    reportData(context, result.data);
   });
 }
 
@@ -237,8 +255,10 @@ export async function moduleUpgrade(
         name,
         version: to,
         migrations: set.get(name).migrations,
+        data: set.get(name).data,
       })),
     });
+    reportData(context, result.data);
     for (const { name, from, to } of result.upgraded) {
       context.out.line(`Upgraded ${name} ${from} → ${to}.`);
     }

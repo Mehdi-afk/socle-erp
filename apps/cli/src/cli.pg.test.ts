@@ -14,7 +14,7 @@ import { afterAll, describe, expect, inject, it } from 'vitest';
 
 import { databaseUrl, tenantDatabase } from './config.js';
 import { main } from './main.js';
-import { useTempDirs, writeShopModules } from './test-support.js';
+import { useTempDirs, writeFiles, writeShopModules } from './test-support.js';
 
 const tempDir = useTempDirs();
 const pgUrl = inject('pgUrl');
@@ -159,6 +159,37 @@ describe('socle db and module commands', () => {
     });
     expect(code).toBe(1);
     expect(out.join('\n')).not.toContain('Sup3r-Secret-Pw');
+  });
+});
+
+describe('module data from the CLI', () => {
+  it('loads data/ always and demo/ only with --demo', async () => {
+    const [modules, cwd] = [await tempDir(), await tempDir()];
+    await writeShopModules(modules, '0.1.0');
+    await writeFiles(join(modules, 'shop'), {
+      'data/items.ts': `import { defineData } from '@socle/framework';
+export default defineData('shop.item', [{ id: 'standard', values: { name: 'Standard' } }]);
+`,
+      'demo/items.ts': `import { defineData } from '@socle/framework';
+export default defineData('shop.item', [{ id: 'sample', values: { name: 'Sample' } }]);
+`,
+    });
+    const socle = cli([modules], cwd);
+    const [plain, demo] = [newTenant(), newTenant()];
+    for (const t of [plain, demo]) await socle('db', 'create', t);
+    expect(await socle('module', 'install', plain, 'shop')).toMatchObject({
+      code: 0,
+      out: /Data of shop: 1 created, 0 updated, 0 kept/,
+    });
+    expect((await socle('module', 'install', demo, 'shop', '--demo')).out).toMatch(
+      /Data of shop: 2 created/,
+    );
+    const names = async (t: string) =>
+      (
+        await sql<{ name: string }>`select name from shop_item order by name`.execute(tenantDb(t))
+      ).rows.map((row) => row.name);
+    expect(await names(plain)).toEqual(['Standard']);
+    expect(await names(demo)).toEqual(['Sample', 'Standard']);
   });
 });
 

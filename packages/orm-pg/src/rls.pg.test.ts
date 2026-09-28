@@ -318,3 +318,40 @@ describe('buildRowSecurity', () => {
     ]);
   });
 });
+
+describe('row-level security of mixin rules', () => {
+  it('mirrors a rule declared on a mixin on every table that mixes it in', () => {
+    const scoped = defineModel({
+      name: 'mix.scoped',
+      abstract: true,
+      fields: { companyId: f.char() },
+    });
+    const order = defineModel({
+      name: 'mix.order',
+      mixins: ['mix.scoped'],
+      fields: { name: f.char() },
+    });
+    const note = defineModel({ name: 'mix.note', fields: { name: f.char() } });
+    const models = buildModelRegistry([{ module: 'mix', models: [scoped, order, note] }], {
+      side: 'server',
+    });
+    const mixPolicy = buildSecurityPolicy(
+      [
+        {
+          module: 'mix',
+          rules: [
+            {
+              id: 'mix.company',
+              model: 'mix.scoped',
+              domain: [['companyId', 'in', { $user: 'companyIds' }]],
+            },
+          ],
+        },
+      ],
+      (model) => models.has(model),
+    );
+    const plan = buildRowSecurity(models, mixPolicy);
+    expect(plan.tables).toEqual(['mix_order']);
+    expect(plan.policies.map((p) => p.table)).toEqual(Array(4).fill('mix_order'));
+  });
+});
