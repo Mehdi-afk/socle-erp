@@ -96,7 +96,7 @@ S'y ajoutent les **mixins** (`mail.thread`, `sequence.mixin`, `archivable`…) e
 
 | Couche | Choix | Raison |
 |---|---|---|
-| Runtime serveur | **Node.js 24 LTS** | LTS, TypeScript exécutable nativement pour les scripts |
+| Runtime serveur | **Node.js 24 LTS** | LTS ; le TypeScript source est exécuté nativement, sans étape de build (ADR 011) |
 | Framework HTTP | **Fastify 5** | Système de plugins, validation par schéma, performant |
 | Base de données | **PostgreSQL 18** — une base par client | Isolation forte, sauvegarde/export par client (modèle Odoo) |
 | Accès aux données | **Kysely** (query builder typé) sous un **ORM maison** piloté par métadonnées | Prisma/Drizzle imposent un schéma statique : incompatible avec des modules qui ajoutent des champs à l'installation |

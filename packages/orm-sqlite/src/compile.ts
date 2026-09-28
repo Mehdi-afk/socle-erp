@@ -55,8 +55,11 @@ function and(parts: readonly Predicate[]): Predicate {
 
 export class LocalDomainCompiler {
   private counter = 0;
+  private readonly registry: ModelRegistry;
 
-  constructor(private readonly registry: ModelRegistry) {}
+  constructor(registry: ModelRegistry) {
+    this.registry = registry;
+  }
 
   root(): string {
     return this.alias();

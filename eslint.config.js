@@ -52,7 +52,15 @@ const NETWORK_MODULES = [
 export default tseslint.config(
   {
     // spikes/*/builds: third-party code downloaded by a spike, never committed.
-    ignores: ['**/node_modules/', '**/dist/', '**/coverage/', '**/.turbo/', 'spikes/**/builds/'],
+    // **/.tmp-tests: module directories written by the CLI tests, deleted after the run.
+    ignores: [
+      '**/node_modules/',
+      '**/dist/',
+      '**/coverage/',
+      '**/.turbo/',
+      'spikes/**/builds/',
+      '**/.tmp-tests/',
+    ],
   },
 
   js.configs.recommended,
@@ -104,6 +112,14 @@ export default tseslint.config(
       'security/detect-non-literal-fs-filename': 'off',
       'security/detect-child-process': 'off',
     },
+  },
+  {
+    // The CLI works on directories given by its operator (module roots, export and scaffold
+    // directories). Paths are confined in code instead: loaded files must resolve inside their
+    // module root (loader.ts), scaffolded names are validated by the manifest rules, exports
+    // never overwrite (flag "wx").
+    files: ['apps/cli/**/*.ts'],
+    rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
 
   // Isomorphic core: no Node and no DOM dependency (ARCHITECTURE.md §3.2)
