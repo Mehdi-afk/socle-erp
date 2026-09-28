@@ -6,10 +6,20 @@
   "license": "LGPL-3.0-only",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*",
+    "kysely": "^0.29.6"
+  },
+  "devDependencies": {
+    "@socle/testing": "workspace:*",
+    "@types/node": "^24.13.6",
+    "fast-check": "^4.10.2"
   }
 }

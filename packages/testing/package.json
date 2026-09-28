@@ -14,5 +14,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.6"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*",
+    "fast-check": "^4.10.2"
   }
 }
