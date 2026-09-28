@@ -1,6 +1,6 @@
-name: "✨ Fonctionnalité"
-description: "Proposer une évolution ou un nouveau module."
-labels: ["enhancement", "triage"]
+name: '✨ Fonctionnalité'
+description: 'Proposer une évolution ou un nouveau module.'
+labels: ['enhancement', 'triage']
 body:
   - type: textarea
     id: problem
@@ -37,4 +37,4 @@ body:
       options:
         - label: "J'ai lu docs/ARCHITECTURE.md ; si la proposition s'en écarte, un ADR sera nécessaire."
           required: true
-        - label: "La proposition a un impact sur la sécurité, les données personnelles ou la conformité légale."
+        - label: 'La proposition a un impact sur la sécurité, les données personnelles ou la conformité légale.'

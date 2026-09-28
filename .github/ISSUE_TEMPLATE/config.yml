@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: "🔒 Vulnérabilité de sécurité / Security vulnerability"
+  - name: '🔒 Vulnérabilité de sécurité / Security vulnerability'
     url: https://github.com/Mehdi-afk/socle-erp/security/advisories/new
-    about: "Ne publiez JAMAIS une vulnérabilité dans une issue publique : utilisez le signalement privé. / NEVER report a vulnerability in a public issue: use private reporting."
-  - name: "💬 Question / discussion"
+    about: 'Ne publiez JAMAIS une vulnérabilité dans une issue publique : utilisez le signalement privé. / NEVER report a vulnerability in a public issue: use private reporting.'
+  - name: '💬 Question / discussion'
     url: https://github.com/Mehdi-afk/socle-erp/discussions
-    about: "Questions, idées et échanges avec la communauté."
+    about: 'Questions, idées et échanges avec la communauté.'
