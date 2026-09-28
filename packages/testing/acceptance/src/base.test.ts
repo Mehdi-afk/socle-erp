@@ -1,0 +1,161 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+//
+// Lot 2.1: the real `base` module of the repository, installed by the CLI on PostgreSQL —
+// reference data from official sources, security mirrored as records, and the authorised-
+// company rule declared once on the `company.scoped` mixin.
+import { join } from 'node:path';
+
+import { compose, databaseUrl, loadModules, main, tenantDatabase } from '@socle/cli';
+import { randomBytes } from 'node:crypto';
+import {
+  createAccessControl,
+  createEnvironment,
+  type Environment,
+  type ModelRegistry,
+  type SecurityPolicy,
+  type UserContext,
+} from '@socle/framework';
+import { createPgDatabase, createPgStorage, type Executor } from '@socle/orm-pg';
+import { sql } from 'kysely';
+import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+
+const REPOSITORY_MODULES = join(import.meta.dirname, '..', '..', '..', '..', 'modules');
+
+let db: Executor;
+let registry: ModelRegistry;
+let security: SecurityPolicy;
+let installOutput = '';
+
+beforeAll(async () => {
+  const pgUrl = inject('pgUrl');
+  const tenant = `base${randomBytes(4).toString('hex')}`;
+  const lines: string[] = [];
+  const io = {
+    env: { SOCLE_DATABASE_URL: pgUrl, SOCLE_MODULE_PATHS: REPOSITORY_MODULES },
+    cwd: REPOSITORY_MODULES,
+    out: { line: (text: string) => lines.push(text) },
+    err: { line: (text: string) => lines.push(text) },
+  };
+  expect(await main(['db', 'create', tenant], io), lines.join('\n')).toBe(0);
+  expect(await main(['module', 'install', tenant, 'base'], io), lines.join('\n')).toBe(0);
+  installOutput = lines.join('\n');
+  db = createPgDatabase({ connectionString: databaseUrl(pgUrl, tenantDatabase(tenant)), max: 2 });
+  ({ registry, security } = compose(await loadModules([REPOSITORY_MODULES]), ['base']));
+});
+afterAll(async () => {
+  await db.destroy();
+});
+
+const count = async (table: string): Promise<number> =>
+  (await sql<{ n: number }>`select count(*)::int as n from ${sql.table(table)}`.execute(db)).rows[0]
+    ?.n ?? -1;
+
+function inTransaction<T>(user: UserContext, work: (env: Environment) => Promise<T>): Promise<T> {
+  return db.transaction().execute(async (trx) => {
+    const env = createEnvironment({
+      registry,
+      storage: createPgStorage(trx, registry),
+      user,
+      access: createAccessControl(security, registry),
+      audit: { record: () => undefined },
+    });
+    const result = await work(env);
+    await env.flush();
+    return result;
+  });
+}
+
+describe('module base', () => {
+  it('loads the reference data of the official sources', async () => {
+    expect(installOutput).toMatch(/Installed base/);
+    expect(await count('res_currency')).toBe(165);
+    expect(await count('res_country')).toBe(249);
+    expect(await count('res_country_state')).toBe(101 + 58);
+    const dzd = await sql<{
+      decimals: number;
+      active: boolean;
+    }>`select decimals, active from res_currency where code = 'DZD'`.execute(db);
+    expect(dzd.rows).toEqual([{ decimals: 2, active: true }]);
+    const wilaya = await sql<{
+      name: string;
+    }>`select s.name from res_country_state s join res_country c on c.id = s.country_id where c.code = 'DZ' and s.code = '16'`.execute(
+      db,
+    );
+    expect(wilaya.rows).toEqual([{ name: 'Alger' }]);
+  });
+
+  it('mirrors its groups, access rights and rules as records', async () => {
+    const groups = await sql<{
+      code: string;
+      implied: string[] | null;
+    }>`select g.code, array_agg(i.code order by i.code) filter (where i.code is not null) as implied from res_groups g left join res_groups_implied_rel r on r.source_id = g.id left join res_groups i on i.id = r.target_id group by g.code order by g.code`.execute(
+      db,
+    );
+    expect(groups.rows).toEqual([
+      { code: 'base.group_erp_manager', implied: ['base.group_user'] },
+      { code: 'base.group_system', implied: ['base.group_erp_manager'] },
+      { code: 'base.group_user', implied: null },
+    ]);
+    expect(await count('ir_model_access')).toBeGreaterThan(10);
+    expect(
+      (await sql<{ code: string }>`select code from ir_rule order by code`.execute(db)).rows,
+    ).toEqual([{ code: 'base.company_allowed' }, { code: 'base.company_scoped' }]);
+  });
+
+  it('restricts every company-scoped model to the authorised companies', async () => {
+    const root: UserContext = {
+      id: 'root',
+      groupIds: ['base.group_system'],
+      companyIds: [],
+      companyId: null,
+      lang: 'fr',
+      tz: 'UTC',
+    };
+    const [c1, c2] = await inTransaction(root, async (env) => {
+      const sudo = env.sudo('test fixtures');
+      const eur = await sudo.model('res.currency').search([['code', '=', 'EUR']]);
+      const companies = await sudo.model('res.company').create([
+        { name: 'Acme France', currencyId: eur.ids[0] as string },
+        { name: 'Acme Algérie', currencyId: eur.ids[0] as string },
+      ]);
+      const [first, second] = companies.ids as [string, string];
+      await sudo.model('res.partner').create([
+        { name: 'Client A', companyId: first },
+        { name: 'Client B', companyId: second },
+        { name: 'Shared supplier', companyId: null },
+      ]);
+      await sudo.model('ir.config_parameter').create([
+        { key: 'invoice.footer', value: 'A', companyId: first },
+        { key: 'invoice.footer', value: 'B', companyId: second },
+      ]);
+      return [first, second];
+    });
+
+    const alice: UserContext = {
+      id: 'alice',
+      groupIds: ['base.group_system'],
+      companyIds: [c1],
+      companyId: c1,
+      lang: 'fr',
+      tz: 'UTC',
+    };
+    await inTransaction(alice, async (env) => {
+      const partners = await env.model('res.partner').search([], { order: 'name' });
+      await partners.prefetch(['name']);
+      expect([...partners].map((p) => (p as unknown as { name: string }).name)).toEqual([
+        'Client A',
+        'Shared supplier',
+      ]);
+      const parameters = await env.model('ir.config_parameter').search([]);
+      await parameters.prefetch(['value']);
+      expect([...parameters].map((p) => (p as unknown as { value: string }).value)).toEqual(['A']);
+      const companies = await env.model('res.company').search([]);
+      expect(companies.ids).toEqual([c1]);
+      // A new company-scoped record defaults to the user's current company.
+      const created = await env.model('res.partner').create({ name: 'New' });
+      await created.prefetch(['companyId']);
+      expect((created as unknown as { companyId: { id: string } }).companyId.id).toBe(c1);
+    });
+    expect(c2).not.toBe(c1);
+  });
+});

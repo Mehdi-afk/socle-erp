@@ -1,0 +1,18 @@
+{
+  "name": "@socle/module-base",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Socle ERP module base: companies, partners, users, groups, currencies, countries, parameters",
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6"
+  }
+}

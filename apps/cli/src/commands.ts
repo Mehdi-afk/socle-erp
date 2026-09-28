@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { SocleError } from '@socle/framework';
+import { securityRecords, SocleError } from '@socle/framework';
 import {
   createPgDatabase,
   createTemplateSnapshots,
@@ -222,7 +222,11 @@ export async function moduleInstall(
         return {
           name,
           version: module.manifest.version,
-          data: demo ? [...module.data, ...module.demo] : module.data,
+          data: [
+            ...securityRecords(module.security, (model) => registry.has(model)),
+            ...module.data,
+            ...(demo ? module.demo : []),
+          ],
         };
       }),
     });
@@ -255,7 +259,10 @@ export async function moduleUpgrade(
         name,
         version: to,
         migrations: set.get(name).migrations,
-        data: set.get(name).data,
+        data: [
+          ...securityRecords(set.get(name).security, (model) => registry.has(model)),
+          ...set.get(name).data,
+        ],
       })),
     });
     reportData(context, result.data);

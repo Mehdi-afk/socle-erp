@@ -1145,6 +1145,9 @@ export interface SecurityPolicy {
 }
 
 // @public
+export function securityRecords(security: ModuleSecurity, hasModel: (model: string) => boolean): ModuleData[];
+
+// @public
 export interface SelectionField<K extends string> extends TypedField<'selection'> {
     // (undocumented)
     readonly selection: readonly (readonly [K, string])[];
