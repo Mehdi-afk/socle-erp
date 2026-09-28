@@ -19,6 +19,8 @@
     "typecheck": "turbo run typecheck",
     "lint": "eslint . --max-warnings 0",
     "test": "turbo run test",
+    "api:check": "turbo run api:check",
+    "api:update": "turbo run api:update",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:spdx": "node scripts/check-spdx.mjs",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@microsoft/api-extractor": "^7.59.1",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-security": "^4.0.1",

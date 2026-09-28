@@ -121,7 +121,12 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@socle/*/src', '@socle/*/src/**'],
+              group: [
+                '@socle/*/src',
+                '@socle/*/src/**',
+                '**/packages/*/src',
+                '**/packages/*/src/**',
+              ],
               message: 'Modules may only import the public API of @socle/* packages.',
             },
           ],

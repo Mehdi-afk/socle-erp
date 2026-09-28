@@ -45,6 +45,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Public API report (API Extractor)
+        run: pnpm api:check
+
       - name: SPDX headers
         run: pnpm check:spdx
 

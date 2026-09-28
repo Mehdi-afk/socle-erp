@@ -8,6 +8,15 @@
     "test": {
       "dependsOn": ["^typecheck"],
       "outputs": []
+    },
+    "api:check": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "api:update": {
+      "dependsOn": ["^typecheck"],
+      "outputs": [],
+      "cache": false
     }
   }
 }

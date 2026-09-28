@@ -11,5 +11,11 @@ export {
   UnknownModuleError,
 } from './errors.js';
 export { defineManifest, parseManifest } from './manifest.js';
-export type { Capability, ManifestInput, ModuleManifest } from './manifest.js';
+export type {
+  Capability,
+  LocalizedText,
+  ManifestInput,
+  ModuleEdition,
+  ModuleManifest,
+} from './manifest.js';
 export { resolveInstallation, topologicalOrder } from './resolve.js';
