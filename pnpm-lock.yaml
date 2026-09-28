@@ -328,6 +328,42 @@ importers:
         specifier: ^24.13.6
         version: 24.13.6
 
+  packages/testing/acceptance:
+    devDependencies:
+      '@socle/cli':
+        specifier: workspace:*
+        version: link:../../../apps/cli
+      '@socle/crypto':
+        specifier: workspace:*
+        version: link:../../crypto
+      '@socle/framework':
+        specifier: workspace:*
+        version: link:../../framework
+      '@socle/orm-pg':
+        specifier: workspace:*
+        version: link:../../orm-pg
+      '@socle/orm-sqlite':
+        specifier: workspace:*
+        version: link:../../orm-sqlite
+      '@socle/server':
+        specifier: workspace:*
+        version: link:../../../apps/server
+      '@socle/sync':
+        specifier: workspace:*
+        version: link:../../sync
+      '@socle/testing':
+        specifier: workspace:*
+        version: link:..
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+      fast-check:
+        specifier: ^4.10.2
+        version: 4.10.2
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+
   packages/ui: {}
 
   packages/view-engine: {}

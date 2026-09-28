@@ -1,0 +1,25 @@
+{
+  "name": "@socle/acceptance",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase acceptance tests: modules extending each other, offline devices converging",
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@socle/cli": "workspace:*",
+    "@socle/crypto": "workspace:*",
+    "@socle/framework": "workspace:*",
+    "@socle/orm-pg": "workspace:*",
+    "@socle/orm-sqlite": "workspace:*",
+    "@socle/server": "workspace:*",
+    "@socle/sync": "workspace:*",
+    "@socle/testing": "workspace:*",
+    "@types/node": "^24.13.6",
+    "fast-check": "^4.10.2",
+    "kysely": "^0.29.6"
+  }
+}

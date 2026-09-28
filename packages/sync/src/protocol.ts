@@ -174,6 +174,29 @@ export interface PushResult {
   readonly status: 'applied' | 'merged' | 'duplicate' | 'rejected' | 'error';
   readonly conflict: boolean;
   readonly reason: string;
+  /**
+   * Version of each field of the record right after the mutation (`applied`, `merged` create
+   * or write): the device bases its next pending changes of the record on them.
+   */
+  readonly fieldVersions?: Readonly<Record<string, number>> | undefined;
+}
+
+const pushResultSchema = z
+  .object({
+    mutationId: z.string().max(64),
+    status: z.enum(['applied', 'merged', 'duplicate', 'rejected', 'error']),
+    conflict: z.boolean(),
+    reason: z.string().max(2000),
+    fieldVersions: z.record(fieldName, z.number().int().nonnegative()).optional(),
+  })
+  .strict();
+
+/**
+ * Validates the server's answer to a push on the device.
+ * @public
+ */
+export function parsePushResults(value: unknown): PushResult[] {
+  return z.array(pushResultSchema).max(10_000).parse(value);
 }
 
 /**

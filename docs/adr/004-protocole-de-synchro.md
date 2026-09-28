@@ -33,6 +33,16 @@ Toute l'application fonctionne hors ligne (D7). Chaque appareil garde une répli
 - Sécurité : signature par appareil, registre et révocation des appareils, rate limiting, revalidation complète ; voir le [modèle de menace](../security/threat-model.md) §3.1 et §3.2.
 - Mise à jour d'`ARCHITECTURE.md` nécessaire : non.
 
+## Précisions de mise en œuvre (phase 1)
+
+Voici comment la phase 1 a précisé la décision (`packages/sync`) :
+
+- **Moteur côté appareil** (`openDevice`). C'est un décorateur de `Storage` : l'ORM tourne sans changement sur la réplique SQLite, et chaque écriture locale devient une mutation signée dans l'outbox. Après un pull, chaque enregistrement touché est reconstruit par `rebase` : dernier état serveur connu, puis changements locaux en attente. Une modification refusée disparaît donc de la réplique.
+- **Versions après application.** Pour une création ou une modification appliquée, le serveur renvoie les versions de champ qui en résultent (`PushResult.fieldVersions`).
+- **Recalage des modifications suivantes.** L'appareil pousse au plus une mutation par enregistrement à chaque tour, dans un préfixe strict de l'outbox. Avant de les envoyer, il recale sur ces versions les bases des modifications suivantes du même enregistrement et les re-signe ; elles n'ont jamais été envoyées. Sans cela, deux modifications successives d'un même appareil se verraient en conflit l'une avec l'autre. Elles seraient même refusées sous `server-wins` ou `manual`.
+- **Pull après un push en échec.** Le pull a lieu même si le push s'est arrêté sur une erreur temporaire, car les changements en attente restent rejoués par-dessus.
+- **Validation.** Tests d'acceptation `packages/testing/acceptance` : deux modules dont l'un étend l'autre, deux appareils, vrai serveur HTTP et PostgreSQL. Un test de propriétés vérifie la convergence quel que soit l'ordre des modifications hors ligne et des synchronisations.
+
 ## Références
 
 - `ARCHITECTURE.md` §6 ; pattern FleetOra `sync-policy.ts`.
