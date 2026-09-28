@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import {
+  AccessError,
   isRecordId,
   isStoredColumn,
   ValidationError,
@@ -9,6 +10,7 @@ import {
   type ModelRegistry,
   type SearchOptions,
   type Storage,
+  type StorageActor,
   type StoredValues,
 } from '@socle/framework';
 import { sql, type RawBuilder } from 'kysely';
@@ -24,6 +26,7 @@ import { relationTable } from './schema.js';
 const MAX_PARAMETERS = 30_000;
 
 const UNIQUE_VIOLATION = '23505';
+const ROW_SECURITY_VIOLATION = '42501';
 
 function toParameter(definition: FieldDefinition, value: unknown): unknown {
   // The driver turns JavaScript arrays into PostgreSQL arrays: JSON always goes as text.
@@ -59,6 +62,9 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
   };
 
   const translate = (meta: ModelMeta, error: unknown): unknown => {
+    if (error instanceof pg.DatabaseError && error.code === ROW_SECURITY_VIOLATION) {
+      return new AccessError(`Operation refused by row-level security on "${meta.name}".`);
+    }
     if (!(error instanceof pg.DatabaseError) || error.code !== UNIQUE_VIOLATION) return error;
     if (error.constraint === `${meta.table}_pkey`) {
       return new ValidationError(`Duplicate id in "${meta.name}".`);
@@ -108,7 +114,7 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
     }
   };
 
-  return {
+  const storage: Storage = {
     async search(meta: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]> {
       const compiler = new DomainCompiler(registry);
       const alias = compiler.root();
@@ -240,7 +246,47 @@ export function createPgStorage(executor: Executor, registry: ModelRegistry): St
       const wanted = [...new Set(ids.filter(isRecordId))];
       if (wanted.length === 0) return;
       // Relation rows go with the record (ON DELETE CASCADE on both sides of every relation table).
-      await sql`delete from ${table(meta)} where id = any(${wanted}::uuid[])`.execute(executor);
+      await guarded(meta, async () => {
+        await sql`delete from ${table(meta)} where id = any(${wanted}::uuid[])`.execute(executor);
+      });
     },
   };
+
+  // ─── acting user (row-level security) ─────────────────────────────────────────────────
+  // The settings are transaction-local (`set_config(…, true)` = SET LOCAL) and only written
+  // when the actor changes, so a request pays one round trip per switch between the user
+  // and the superuser.
+  let current: string | undefined;
+
+  const actAs = async (actor: StorageActor): Promise<void> => {
+    const key = JSON.stringify(actor);
+    if (key === current) return;
+    if (!executor.isTransaction) {
+      throw new SchemaError(
+        'The ORM must run in a transaction on PostgreSQL (row-level security).',
+      );
+    }
+    const ids = [actor.userId, actor.companyId ?? '', ...actor.companyIds, ...actor.groupIds];
+    if (ids.some((id) => id.includes(',')))
+      throw new AccessError('Invalid identifier in the user context.');
+    await sql`select set_config('app.su', ${actor.su ? 'on' : 'off'}, true), set_config('app.user_id', ${actor.userId}, true), set_config('app.company_id', ${actor.companyId ?? ''}, true), set_config('app.company_ids', ${actor.companyIds.join(',')}, true), set_config('app.group_ids', ${actor.groupIds.join(',')}, true)`.execute(
+      executor,
+    );
+    current = key;
+  };
+
+  const as = (actor: StorageActor): Storage => ({
+    search: async (meta, where, options) => (
+      await actAs(actor),
+      storage.search(meta, where, options)
+    ),
+    count: async (meta, where) => (await actAs(actor), storage.count(meta, where)),
+    read: async (meta, ids, fields) => (await actAs(actor), storage.read(meta, ids, fields)),
+    insert: async (meta, rows) => (await actAs(actor), storage.insert(meta, rows)),
+    update: async (meta, id, values) => (await actAs(actor), storage.update(meta, id, values)),
+    delete: async (meta, ids) => (await actAs(actor), storage.delete(meta, ids)),
+    as,
+  });
+
+  return { ...storage, as };
 }

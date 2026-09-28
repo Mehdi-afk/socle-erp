@@ -3,7 +3,7 @@
 // Applies the automatic part of ARCHITECTURE.md §4.7: new tables, columns, indexes and
 // constraints. The schema last applied is recorded in `socle_schema` (no ad-hoc introspection
 // of the catalog), and the next diff starts from it.
-import type { ModelRegistry } from '@socle/framework';
+import type { ModelRegistry, SecurityPolicy } from '@socle/framework';
 import {
   sql,
   type ColumnDefinitionBuilder,
@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import type { Executor, Tables } from './database.js';
 import { SchemaError } from './errors.js';
+import { applyRowSecurity, buildRowSecurity } from './rls.js';
 import {
   buildSchema,
   diffSchema,
@@ -152,6 +153,8 @@ async function run(trx: Transaction<Tables>, operation: SchemaOperation): Promis
 /** Takes the schema lock and makes sure the bookkeeping table exists (inside `trx`). */
 export async function prepareSchemaTransaction(trx: Transaction<Tables>): Promise<void> {
   await sql`select pg_advisory_xact_lock(${SCHEMA_LOCK})`.execute(trx);
+  // Schema changes, exports and migrations see every row (row-level security bypass).
+  await sql`select set_config('app.su', 'on', true)`.execute(trx);
   await sql`create table if not exists ${sql.table(SCHEMA_TABLE)} (table_name text primary key, definition jsonb not null, applied_at timestamptz not null default now())`.execute(
     trx,
   );
@@ -175,10 +178,19 @@ export async function recordSchema(
  * records the result. Refuses any destructive change.
  * @throws {@link SchemaError}
  */
+export interface ApplySchemaOptions {
+  /**
+   * The security policy of the installed modules: when given, the row-level security
+   * policies mirroring its record rules are (re)created. When omitted, they are left as is.
+   */
+  readonly security?: SecurityPolicy | undefined;
+}
+
 export async function applySchemaIn(
   trx: Transaction<Tables>,
   registry: ModelRegistry,
   previous: DatabaseSchema | null,
+  options: ApplySchemaOptions = {},
 ): Promise<SchemaPlan> {
   const plan = diffSchema(previous, buildSchema(registry));
   if (plan.destructive.length > 0) {
@@ -187,6 +199,7 @@ export async function applySchemaIn(
     );
   }
   for (const operation of plan.operations) await run(trx, operation);
+  if (options.security) await applyRowSecurity(trx, buildRowSecurity(registry, options.security));
   await recordSchema(trx, plan.recorded);
   return plan;
 }
@@ -196,9 +209,13 @@ export async function applySchemaIn(
  * lock. Refuses any destructive change (it needs a hand-written migration first).
  * @throws {@link SchemaError}
  */
-export async function applySchema(db: Executor, registry: ModelRegistry): Promise<SchemaPlan> {
+export async function applySchema(
+  db: Executor,
+  registry: ModelRegistry,
+  options: ApplySchemaOptions = {},
+): Promise<SchemaPlan> {
   return db.transaction().execute(async (trx) => {
     await prepareSchemaTransaction(trx);
-    return applySchemaIn(trx, registry, await recordedSchema(trx));
+    return applySchemaIn(trx, registry, await recordedSchema(trx), options);
   });
 }

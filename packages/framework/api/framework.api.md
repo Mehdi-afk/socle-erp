@@ -1077,6 +1077,7 @@ export class SocleError extends Error {
 
 // @public
 export interface Storage {
+    as?(actor: StorageActor): Storage;
     // (undocumented)
     count(model: ModelMeta, where: DomainNode): Promise<number>;
     // (undocumented)
@@ -1091,6 +1092,19 @@ export interface Storage {
     search(model: ModelMeta, where: DomainNode, options: SearchOptions): Promise<string[]>;
     // (undocumented)
     update(model: ModelMeta, id: string, values: StoredValues): Promise<void>;
+}
+
+// @public
+export interface StorageActor {
+    // (undocumented)
+    readonly companyId: string | null;
+    // (undocumented)
+    readonly companyIds: readonly string[];
+    // (undocumented)
+    readonly groupIds: readonly string[];
+    readonly su: boolean;
+    // (undocumented)
+    readonly userId: string;
 }
 
 // @public
