@@ -1,0 +1,82 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.5rem;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-small-size);
+  font-weight: var(--font-small-weight);
+  line-height: 1.5rem;
+}
+
+.ui-badge[data-tone='accent'] {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.ui-badge[data-tone='neutral'] {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+}
+
+/* A state: a dot in the state colour and the word. */
+.ui-pill {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+  font-size: var(--font-small-size);
+  font-weight: var(--font-small-weight);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.ui-pill-dot {
+  flex: none;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-label);
+}
+
+.ui-pill[data-tone='success'] {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
+
+.ui-pill[data-tone='success'] .ui-pill-dot {
+  background: var(--color-success);
+}
+
+.ui-pill[data-tone='warning'] {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+
+.ui-pill[data-tone='warning'] .ui-pill-dot {
+  background: var(--color-warning);
+}
+
+.ui-pill[data-tone='danger'] {
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.ui-pill[data-tone='danger'] .ui-pill-dot {
+  background: var(--color-danger);
+}
+
+.ui-pill[data-tone='info'] {
+  background: var(--color-info-soft);
+  color: var(--color-info-text);
+}
+
+.ui-pill[data-tone='info'] .ui-pill-dot {
+  background: var(--color-info);
+}
