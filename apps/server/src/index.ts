@@ -7,9 +7,12 @@ export {
   changePassword,
   CLEAR_SESSION_COOKIE,
   createUser,
+  csrfMatches,
+  csrfToken,
   DEFAULT_COST,
   DEFAULT_SESSION_POLICY,
   hashPassword,
+  listSessions,
   login,
   LoginError,
   logout,
@@ -17,6 +20,8 @@ export {
   readSessionCookie,
   requestPasswordReset,
   resetPassword,
+  revokeSession,
+  rotateSession,
   SESSION_COOKIE,
   sessionCookie,
   verifyPassword,
@@ -28,7 +33,7 @@ export {
   pwnedPasswords,
 } from './password-policy.js';
 export type { BreachCheck, PasswordPolicy } from './password-policy.js';
-export type { PasswordCost, SessionPolicy } from './auth.js';
+export type { PasswordCost, SessionInfo, SessionPolicy } from './auth.js';
 export { corsHeaders, SECURITY_HEADERS } from './headers.js';
 export { createRateLimiter, takeToken } from './rate-limit.js';
 export type { Bucket, BucketPolicy } from './rate-limit.js';

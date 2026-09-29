@@ -28,7 +28,13 @@ import {
   registerFunctions,
 } from '@socle/orm-sqlite';
 import { openNodeSqlite } from '@socle/orm-sqlite/node';
-import { buildServer, createTenantDirectory, createUser } from '@socle/server';
+import {
+  buildServer,
+  createTenantDirectory,
+  createUser,
+  csrfToken,
+  readSessionCookie,
+} from '@socle/server';
 import {
   memoryDeviceStateStore,
   openDevice,
@@ -42,6 +48,12 @@ import { expect } from 'vitest';
 
 export const MODULES = join(import.meta.dirname, '..', 'modules');
 const FAST = { memoryKiB: 1024, passes: 1, parallelism: 1 };
+
+/** The anti-CSRF header a browser client would send with this session cookie. */
+export const csrfHeader = (cookie: string): Record<string, string> => {
+  const token = readSessionCookie(cookie);
+  return token === undefined ? {} : { 'x-csrf-token': csrfToken(token) };
+};
 const EVERYTHING: DomainNode = { kind: 'true' };
 
 export const ALICE: UserContext = {
@@ -187,7 +199,7 @@ export function testServer(tenantsByName: Readonly<Record<string, InstalledTenan
     app.inject({
       method,
       url,
-      headers: { host: `${host}.erp.test`, ...(cookie ? { cookie } : {}) },
+      headers: { host: `${host}.erp.test`, ...(cookie ? { cookie, ...csrfHeader(cookie) } : {}) },
       ...(body === undefined ? {} : { payload: body as Record<string, unknown> }),
     });
   const signIn = async (host: string, login: string, password: string): Promise<string> => {
@@ -229,7 +241,7 @@ export async function createTenant(pgUrl: string): Promise<Tenant> {
     const response = await app.inject({
       method,
       url,
-      headers: { host: 'acme.erp.test', ...(cookie ? { cookie } : {}) },
+      headers: { host: 'acme.erp.test', ...(cookie ? { cookie, ...csrfHeader(cookie) } : {}) },
       ...(body === undefined ? {} : { payload: body as Record<string, unknown> }),
     });
     expect(response.statusCode, response.body).toBe(200);

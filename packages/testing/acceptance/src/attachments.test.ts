@@ -28,6 +28,8 @@ import {
 import { scanPendingAttachments } from '@socle/worker';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 
+import { csrfHeader } from './harness.js';
+
 const REPOSITORY_MODULES = join(import.meta.dirname, '..', '..', '..', '..', 'modules');
 const FAST = { memoryKiB: 1024, passes: 1, parallelism: 1 };
 // Assembled at run time so that no antivirus flags this source file.
@@ -137,7 +139,7 @@ const request = (
     url,
     headers: {
       host: 'acme.erp.test',
-      ...(options.cookie ? { cookie: options.cookie } : {}),
+      ...(options.cookie ? { cookie: options.cookie, ...csrfHeader(options.cookie) } : {}),
       ...(options.body ? { 'content-type': 'application/octet-stream' } : {}),
       ...(options.headers ?? {}),
     },

@@ -11,6 +11,7 @@ import { afterAll, describe, expect, inject, it } from 'vitest';
 import { buildServer, type ServerOptions } from './app.js';
 import {
   createUser,
+  csrfToken,
   hashPassword,
   readSessionCookie,
   requestPasswordReset,
@@ -21,6 +22,12 @@ import {
 import { corsHeaders } from './headers.js';
 import { createRateLimiter, takeToken } from './rate-limit.js';
 import { createTenantDirectory, tenantFromHost, type TenantDirectory } from './tenants.js';
+
+/** The anti-CSRF header a browser client would send with this session cookie. */
+const csrfHeader = (cookie: string): Record<string, string> => {
+  const token = readSessionCookie(cookie);
+  return token === undefined ? {} : { 'x-csrf-token': csrfToken(token) };
+};
 
 const C1 = '0190a000-0000-7000-8000-0000000000c1';
 const C2 = '0190a000-0000-7000-8000-0000000000c2';
@@ -182,7 +189,7 @@ async function server(overrides: Partial<ServerOptions> = {}) {
     ...overrides,
   });
   const request = (
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     path: string,
     options: {
       body?: unknown;
@@ -196,7 +203,7 @@ async function server(overrides: Partial<ServerOptions> = {}) {
       url: path,
       headers: {
         host: options.host ?? 'acme.erp.test',
-        ...(options.cookie ? { cookie: options.cookie } : {}),
+        ...(options.cookie ? { cookie: options.cookie, ...csrfHeader(options.cookie) } : {}),
         ...(options.headers ?? {}),
       },
       ...(options.body === undefined ? {} : { payload: options.body as Record<string, unknown> }),
@@ -327,8 +334,12 @@ describe('HTTP server', () => {
       ).statusCode,
     ).toBe(401);
 
-    expect((await change('bob-pass', 'a brand new password')).statusCode).toBe(200);
-    expect((await request('GET', '/sync/pull', { cookie: here })).statusCode).toBe(200);
+    const done = await change('bob-pass', 'a brand new password');
+    expect(done.statusCode).toBe(200);
+    // The changing session gets a new token; the old one and the other sessions are dead.
+    const renewed = String(done.headers['set-cookie']).split(';')[0] as string;
+    expect((await request('GET', '/sync/pull', { cookie: here })).statusCode).toBe(401);
+    expect((await request('GET', '/sync/pull', { cookie: renewed })).statusCode).toBe(200);
     expect((await request('GET', '/sync/pull', { cookie: elsewhere })).statusCode).toBe(401);
     const old = await request('POST', '/auth/login', {
       body: { login: 'bob@acme.test', password: 'bob-pass' },
@@ -397,6 +408,124 @@ describe('HTTP server', () => {
       error: 'invalid_token',
     });
     expect((await reset('x'.repeat(43), 'yet another password')).statusCode).toBe(400);
+  });
+
+  it('refuses a modifying request without the anti-CSRF token of its own session', async () => {
+    const { app, request, signIn } = await server();
+    const alice = await signIn('alice@acme.test', 'alice-pass');
+    const bob = await signIn('bob@acme.test', 'bob-pass');
+    const bare = (headers: Record<string, string>) =>
+      app.inject({
+        method: 'POST',
+        url: '/rpc/srv.invoice/searchCount',
+        headers: { host: 'acme.erp.test', cookie: alice, ...headers },
+        payload: {},
+      });
+    const refused = await bare({});
+    expect([refused.statusCode, refused.json<{ error: string }>().error]).toEqual([403, 'csrf']);
+    expect((await bare({ 'x-csrf-token': 'x'.repeat(43) })).statusCode).toBe(403);
+    // The token of another session is no good: it is bound to the cookie.
+    const others = csrfHeader(bob)['x-csrf-token'] as string;
+    expect((await bare({ 'x-csrf-token': others })).statusCode).toBe(403);
+    // A browser saying "cross-site" without an Origin is refused even with the token.
+    expect((await bare({ ...csrfHeader(alice), 'sec-fetch-site': 'cross-site' })).statusCode).toBe(
+      403,
+    );
+    expect((await bare({ ...csrfHeader(alice), 'sec-fetch-site': 'same-origin' })).statusCode).toBe(
+      200,
+    );
+    // A foreign Origin is refused before anything else (CORS step).
+    expect((await bare({ ...csrfHeader(alice), origin: 'https://evil.test' })).statusCode).toBe(
+      403,
+    );
+    // Reading needs no token; nor do sign-in and sign-out.
+    expect((await request('GET', '/sync/pull', { cookie: alice })).statusCode).toBe(200);
+    const loggedIn = await request('POST', '/auth/login', {
+      body: { login: 'alice@acme.test', password: 'alice-pass' },
+      cookie: alice,
+    });
+    expect(loggedIn.statusCode).toBe(200);
+    // The token comes with the login answer and with /auth/session, and they agree.
+    const fresh = String(loggedIn.headers['set-cookie']).split(';')[0] as string;
+    const session = await app.inject({
+      method: 'GET',
+      url: '/auth/session',
+      headers: { host: 'acme.erp.test', cookie: fresh },
+    });
+    expect(session.json()).toMatchObject({
+      userId: 'alice',
+      csrfToken: loggedIn.json<{ csrfToken: string }>().csrfToken,
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/auth/logout',
+          headers: { host: 'acme.erp.test', cookie: fresh },
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('lists, revokes and rotates sessions', async () => {
+    const { request, signIn } = await server({
+      passwordPolicy: { minLength: 12 },
+      loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+    });
+    const phone = String(
+      (
+        await request('POST', '/auth/login', {
+          body: { login: 'bob@acme.test', password: 'bob-pass' },
+          headers: { 'user-agent': 'Phone/1.0' },
+        })
+      ).headers['set-cookie'],
+    ).split(';')[0] as string;
+    const laptop = await signIn('bob@acme.test', 'bob-pass');
+    const alice = await signIn('alice@acme.test', 'alice-pass');
+
+    const listed = (await request('GET', '/auth/sessions', { cookie: laptop })).json<{
+      sessions: { id: string; current: boolean; userAgent: string | null }[];
+    }>().sessions;
+    expect(listed).toHaveLength(2);
+    expect(listed.filter((entry) => entry.current)).toHaveLength(1);
+    const other = listed.find((entry) => !entry.current) as {
+      id: string;
+      userAgent: string | null;
+    };
+    expect(other.userAgent).toBe('Phone/1.0');
+    // The list never shows a secret: ids are not session tokens.
+    expect(JSON.stringify(listed)).not.toContain(phone.split('=')[1] as string);
+
+    // Only the owner can revoke; an unknown or foreign id is a plain 404.
+    expect(
+      (await request('DELETE', `/auth/sessions/${other.id}`, { cookie: alice })).statusCode,
+    ).toBe(404);
+    expect(
+      (await request('DELETE', '/auth/sessions/not-a-uuid', { cookie: laptop })).statusCode,
+    ).toBe(400);
+    expect(
+      (await request('DELETE', `/auth/sessions/${other.id}`, { cookie: laptop })).statusCode,
+    ).toBe(200);
+    expect((await request('GET', '/sync/pull', { cookie: phone })).statusCode).toBe(401);
+    expect(
+      (await request('DELETE', `/auth/sessions/${other.id}`, { cookie: laptop })).statusCode,
+    ).toBe(404);
+
+    // A password change gives the session a new token; the old one is dead at once.
+    const changed = await request('POST', '/auth/password/change', {
+      cookie: laptop,
+      body: { current: 'bob-pass', next: 'a brand new password' },
+    });
+    expect(changed.statusCode).toBe(200);
+    expect((await request('GET', '/sync/pull', { cookie: laptop })).statusCode).toBe(401);
+    const renewed = String(changed.headers['set-cookie']).split(';')[0] as string;
+    expect(renewed).not.toBe(laptop);
+    expect((await request('GET', '/sync/pull', { cookie: renewed })).statusCode).toBe(200);
+    expect(changed.json<{ csrfToken: string }>().csrfToken).toBe(
+      csrfHeader(renewed)['x-csrf-token'],
+    );
+    const after = await request('GET', '/auth/sessions', { cookie: renewed });
+    expect(after.json<{ sessions: unknown[] }>().sessions).toHaveLength(1);
   });
 
   it('consumes a reset token atomically: of two simultaneous uses only one wins', async () => {
