@@ -13,6 +13,8 @@ import {
   createUser,
   hashPassword,
   readSessionCookie,
+  requestPasswordReset,
+  resetPassword,
   verifyPassword,
   type SessionPolicy,
 } from './auth.js';
@@ -271,6 +273,172 @@ describe('HTTP server', () => {
         })
       ).statusCode,
     ).toBe(401);
+  });
+
+  it('re-hashes a password stored with weaker parameters at the next sign-in', async () => {
+    const { db, signIn } = await server();
+    await createUser(
+      db,
+      { id: 'carol', login: 'carol@acme.test', password: 'carol-pass-12', groupIds: [] },
+      { memoryKiB: 512, passes: 1, parallelism: 1 },
+    );
+    const stored = async () =>
+      (
+        await sql<{
+          password_hash: string;
+        }>`select password_hash from socle_user where id = 'carol'`.execute(db)
+      ).rows[0]?.password_hash as string;
+    expect(await stored()).toContain('m=512,');
+    await signIn('carol@acme.test', 'carol-pass-12');
+    expect(await stored()).toContain('m=1024,');
+    // The new hash still verifies.
+    await signIn('carol@acme.test', 'carol-pass-12');
+  });
+
+  it('changes a password: policy, current password, other sessions revoked', async () => {
+    const { request, signIn, db } = await server({
+      passwordPolicy: {
+        minLength: 12,
+        breachCheck: (password) => Promise.resolve(password.startsWith('pwned') ? 9 : 0),
+      },
+      loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+    });
+    const here = await signIn('bob@acme.test', 'bob-pass');
+    const elsewhere = await signIn('bob@acme.test', 'bob-pass');
+    const change = (current: string, next: string) =>
+      request('POST', '/auth/password/change', { cookie: here, body: { current, next } });
+
+    expect((await change('bob-pass', 'short')).json()).toMatchObject({ error: 'weak_password' });
+    expect((await change('bob-pass', 'pwned-password-123')).json()).toMatchObject({
+      error: 'weak_password',
+    });
+    const wrong = await change('not-my-password', 'a brand new password');
+    expect([wrong.statusCode, wrong.json<{ error: string }>().error]).toEqual([
+      403,
+      'invalid_credentials',
+    ]);
+    // Validation comes before authentication; a valid body without a session is refused.
+    expect((await request('POST', '/auth/password/change', { body: {} })).statusCode).toBe(400);
+    expect(
+      (
+        await request('POST', '/auth/password/change', {
+          body: { current: 'bob-pass', next: 'a brand new password' },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    expect((await change('bob-pass', 'a brand new password')).statusCode).toBe(200);
+    expect((await request('GET', '/sync/pull', { cookie: here })).statusCode).toBe(200);
+    expect((await request('GET', '/sync/pull', { cookie: elsewhere })).statusCode).toBe(401);
+    const old = await request('POST', '/auth/login', {
+      body: { login: 'bob@acme.test', password: 'bob-pass' },
+    });
+    expect(old.statusCode).toBe(401);
+    await signIn('bob@acme.test', 'a brand new password');
+    expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    const kinds = await sql<{
+      kind: string;
+    }>`select kind from socle_audit where kind = 'password_changed'`.execute(db);
+    expect(kinds.rows).toHaveLength(1);
+  });
+
+  it('resets a password with a single-use token that expires', async () => {
+    const mails: { login: string; token: string; host: string }[] = [];
+    const { request, signIn, db } = await server({
+      passwordPolicy: { minLength: 12 },
+      sendPasswordReset: (message) => {
+        mails.push(message);
+        return Promise.resolve();
+      },
+      loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+    });
+    const forgot = (login: string) => request('POST', '/auth/password/forgot', { body: { login } });
+    const reset = (token: string, password: string) =>
+      request('POST', '/auth/password/reset', { body: { token, password } });
+
+    // The answer is the same for a known and an unknown account; only the known one gets a mail.
+    const known = await forgot('alice@acme.test');
+    const unknown = await forgot('ghost@acme.test');
+    expect([known.statusCode, known.json()]).toEqual([200, { ok: true }]);
+    expect(unknown.json()).toEqual(known.json());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mails).toHaveLength(1);
+    expect(mails[0]).toMatchObject({ login: 'alice@acme.test', host: 'acme.erp.test' });
+    const first = (mails[0] as { token: string }).token;
+
+    // A newer request cancels the older token.
+    await forgot('alice@acme.test');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = (mails[1] as { token: string }).token;
+    expect((await reset(first, 'a brand new password')).json()).toMatchObject({
+      error: 'invalid_token',
+    });
+
+    const session = await signIn('alice@acme.test', 'alice-pass');
+    expect((await reset(second, 'too short')).json()).toMatchObject({ error: 'weak_password' });
+    expect((await reset(second, 'a brand new password')).statusCode).toBe(200);
+    // Single use; every session of the account is revoked; the new password works.
+    expect((await reset(second, 'another new password')).json()).toMatchObject({
+      error: 'invalid_token',
+    });
+    expect((await request('GET', '/sync/pull', { cookie: session })).statusCode).toBe(401);
+    await signIn('alice@acme.test', 'a brand new password');
+
+    // Expired after 30 minutes; the table only holds a hash of the token.
+    await forgot('alice@acme.test');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const late = (mails[2] as { token: string }).token;
+    const stored = await sql<{
+      token_hash: string;
+    }>`select token_hash from socle_password_reset`.execute(db);
+    expect(stored.rows.map((row) => row.token_hash)).not.toContain(late);
+    await sql`update socle_password_reset set expires_at = now() - interval '1 minute'`.execute(db);
+    expect((await reset(late, 'yet another password')).json()).toMatchObject({
+      error: 'invalid_token',
+    });
+    expect((await reset('x'.repeat(43), 'yet another password')).statusCode).toBe(400);
+  });
+
+  it('consumes a reset token atomically: of two simultaneous uses only one wins', async () => {
+    const { db } = await server();
+    const found = await requestPasswordReset(db, 'alice@acme.test');
+    const token = (found as { token: string }).token;
+    const results = await Promise.all([
+      db.transaction().execute((trx) => resetPassword(trx, token, 'first new password', FAST)),
+      db.transaction().execute((trx) => resetPassword(trx, token, 'second new password', FAST)),
+    ]);
+    expect(results.filter((userId) => userId !== undefined)).toEqual(['alice']);
+    expect(await requestPasswordReset(db, 'ghost@acme.test')).toBeUndefined();
+  });
+
+  it('locks an address after repeated failures, whatever the accounts', async () => {
+    const { request, db } = await server({
+      session: { ...SESSION, maxFailures: 1000, maxIpFailures: 3 },
+      loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+    });
+    const attempt = (ip: string, login: string, password: string) =>
+      request('POST', '/auth/login', {
+        headers: { 'x-forwarded-for': ip },
+        body: { login, password },
+      });
+    for (const ghost of ['a', 'b', 'c']) {
+      expect((await attempt('203.0.113.7', `${ghost}@acme.test`, 'nope')).statusCode).toBe(401);
+    }
+    // The right password from the locked address is refused, with the same generic answer…
+    const locked = await attempt('203.0.113.7', 'alice@acme.test', 'alice-pass');
+    expect([locked.statusCode, locked.json<{ error: string }>().error]).toEqual([
+      401,
+      'invalid_credentials',
+    ]);
+    // …and did not count against the account: another address signs in at once.
+    expect((await attempt('198.51.100.9', 'alice@acme.test', 'alice-pass')).statusCode).toBe(200);
+    const row = await sql<{
+      failures: number;
+    }>`select failures from socle_login_ip where ip = '203.0.113.7'`.execute(db);
+    expect(row.rows[0]?.failures).toBe(3);
+    // The lock ends: the address is free again once its lock time has passed.
+    await sql`update socle_login_ip set locked_until = now() - interval '1 second'`.execute(db);
+    expect((await attempt('203.0.113.7', 'alice@acme.test', 'alice-pass')).statusCode).toBe(200);
   });
 
   it("serves RPC under the user's rights, validates input and hides internals", async () => {

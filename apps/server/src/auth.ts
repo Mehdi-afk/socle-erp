@@ -76,6 +76,17 @@ export async function verifyPassword(stored: string, password: string): Promise<
   return actual.length === wanted.length && timingSafeEqual(actual, wanted);
 }
 
+/**
+ * True when a stored hash is weaker than `cost` (lower memory, fewer passes or fewer lanes) or
+ * is not a well-formed Argon2id hash: it is then replaced at the next successful sign-in.
+ */
+export function needsRehash(stored: string, cost: PasswordCost): boolean {
+  const match = PHC.exec(stored);
+  if (!match) return true;
+  const [m, t, p] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return m < cost.memoryKiB || t < cost.passes || p < cost.parallelism;
+}
+
 export interface SessionPolicy {
   /** Idle time after which a session expires (sliding). */
   readonly idleMs: number;
@@ -83,6 +94,8 @@ export interface SessionPolicy {
   readonly absoluteMs: number;
   /** Failed attempts before the account is locked (then doubling lock times, max 24 h). */
   readonly maxFailures: number;
+  /** Failed attempts from one address, whatever the accounts, before it is locked (default 20). */
+  readonly maxIpFailures?: number | undefined;
   readonly cost: PasswordCost;
 }
 
@@ -124,6 +137,38 @@ export async function createUser(
 /** A hash with the right shape and cost, used when the login is unknown (same timing). */
 let decoy: Promise<string> | undefined;
 
+const lockDuration = (failures: number, free: number): number =>
+  failures >= free ? Math.min(86_400_000, 60_000 * 2 ** Math.min(20, failures - free)) : 0;
+
+async function ipIsLocked(db: Executor, ip: string, now: Date): Promise<boolean> {
+  const rows = await sql<{
+    locked_until: Date | string | null;
+  }>`select locked_until from ${sql.table(T.loginIp)} where ip = ${ip}`.execute(db);
+  const until = rows.rows[0]?.locked_until;
+  return until !== null && until !== undefined && new Date(until) > now;
+}
+
+/** Counts a failed attempt from `ip`; the count is forgotten after 24 hours of quiet. */
+async function recordIpFailure(
+  db: Executor,
+  ip: string,
+  now: Date,
+  policy: SessionPolicy,
+): Promise<void> {
+  const stamp = now.toISOString();
+  const rows = await sql<{
+    failures: number;
+  }>`insert into ${sql.table(T.loginIp)} as t (ip, failures, updated_at) values (${ip}, 1, ${stamp}::timestamptz) on conflict (ip) do update set failures = case when t.updated_at < ${stamp}::timestamptz - interval '24 hours' then 1 else t.failures + 1 end, updated_at = ${stamp}::timestamptz returning failures`.execute(
+    db,
+  );
+  const wait = lockDuration(rows.rows[0]?.failures ?? 1, policy.maxIpFailures ?? 20);
+  if (wait > 0) {
+    await sql`update ${sql.table(T.loginIp)} set locked_until = ${new Date(now.getTime() + wait).toISOString()}::timestamptz where ip = ${ip}`.execute(
+      db,
+    );
+  }
+}
+
 /**
  * Checks a login and password; on success opens a session and returns its token (a new one
  * at each login: session fixation is impossible).
@@ -135,7 +180,15 @@ export async function login(
   password: string,
   policy: SessionPolicy = DEFAULT_SESSION_POLICY,
   now: Date = new Date(),
+  ip?: string,
 ): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
+  // A locked address gets the generic answer after the same work, and does not touch the
+  // account's own counter (an attacker must not lock a victim out from a locked address).
+  if (ip !== undefined && (await ipIsLocked(db, ip, now))) {
+    decoy ??= hashPassword('decoy', policy.cost);
+    await verifyPassword(await decoy, password);
+    throw new LoginError();
+  }
   const rows = await sql<{
     id: string;
     password_hash: string;
@@ -149,6 +202,7 @@ export async function login(
   if (!user) {
     decoy ??= hashPassword('decoy', policy.cost);
     await verifyPassword(await decoy, password);
+    if (ip !== undefined) await recordIpFailure(db, ip, now, policy);
     throw new LoginError();
   }
   const lockedUntil = user.locked_until === null ? null : new Date(user.locked_until);
@@ -163,11 +217,18 @@ export async function login(
         db,
       );
     }
+    if (!valid && ip !== undefined) await recordIpFailure(db, ip, now, policy);
     throw new LoginError();
   }
   await sql`update ${sql.table(T.user)} set failed_attempts = 0, locked_until = null where id = ${user.id}`.execute(
     db,
   );
+  // Hashing parameters are raised over time: the password is re-hashed while we hold it.
+  if (needsRehash(user.password_hash, policy.cost)) {
+    await sql`update ${sql.table(T.user)} set password_hash = ${await hashPassword(password, policy.cost)} where id = ${user.id}`.execute(
+      db,
+    );
+  }
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + policy.absoluteMs);
   await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at) values (${tokenHash(token)}, ${user.id}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz)`.execute(
@@ -219,6 +280,111 @@ export async function logout(db: Executor, token: string): Promise<void> {
   await sql`update ${sql.table(T.session)} set revoked = true where token_hash = ${tokenHash(token)}`.execute(
     db,
   );
+}
+
+/** The login of a user (to check that a password differs from it). */
+export async function loginOf(db: Executor, userId: string): Promise<string> {
+  const rows = await sql<{
+    login: string;
+  }>`select login from ${sql.table(T.user)} where id = ${userId}`.execute(db);
+  return rows.rows[0]?.login ?? '';
+}
+
+/** Validity of a password-reset token. */
+export const RESET_TOKEN_MS = 30 * 60_000;
+
+/**
+ * Changes the password of the signed-in user after checking the current one. Every other
+ * session of the user is revoked (a stolen session does not survive the change); the current
+ * one, `keepToken`, stays.
+ * @throws {@link LoginError} when the current password is wrong
+ */
+export async function changePassword(
+  db: Executor,
+  userId: string,
+  current: string,
+  next: string,
+  keepToken: string | undefined,
+  cost: PasswordCost = DEFAULT_COST,
+): Promise<void> {
+  const rows = await sql<{
+    password_hash: string;
+  }>`select password_hash from ${sql.table(T.user)} where id = ${userId} and active`.execute(db);
+  const stored = rows.rows[0]?.password_hash;
+  if (stored === undefined || !(await verifyPassword(stored, current))) throw new LoginError();
+  await sql`update ${sql.table(T.user)} set password_hash = ${await hashPassword(next, cost)} where id = ${userId}`.execute(
+    db,
+  );
+  await sql`update ${sql.table(T.session)} set revoked = true where user_id = ${userId} and token_hash <> ${keepToken === undefined ? '' : tokenHash(keepToken)}`.execute(
+    db,
+  );
+}
+
+/**
+ * A single-use reset token for the account `loginName`, valid 30 minutes (any earlier token of
+ * the account stops working). Undefined for an unknown or disabled account: the caller answers
+ * the same thing either way, so that the answer does not reveal which accounts exist.
+ */
+export async function requestPasswordReset(
+  db: Executor,
+  loginName: string,
+  now: Date = new Date(),
+): Promise<{ readonly token: string; readonly userId: string } | undefined> {
+  const rows = await sql<{
+    id: string;
+  }>`select id from ${sql.table(T.user)} where login = ${loginName.toLowerCase()} and active`.execute(
+    db,
+  );
+  const userId = rows.rows[0]?.id;
+  if (userId === undefined) return undefined;
+  const token = randomBytes(32).toString('base64url');
+  await sql`delete from ${sql.table(T.passwordReset)} where user_id = ${userId}`.execute(db);
+  await sql`insert into ${sql.table(T.passwordReset)} (token_hash, user_id, expires_at) values (${tokenHash(token)}, ${userId}, ${new Date(now.getTime() + RESET_TOKEN_MS).toISOString()}::timestamptz)`.execute(
+    db,
+  );
+  return { token, userId };
+}
+
+/** The login of the account a valid reset token belongs to (to check the new password). */
+export async function resetTokenLogin(
+  db: Executor,
+  token: string,
+  now: Date = new Date(),
+): Promise<string | undefined> {
+  const rows = await sql<{
+    login: string;
+  }>`select u.login from ${sql.table(T.passwordReset)} r join ${sql.table(T.user)} u on u.id = r.user_id where r.token_hash = ${tokenHash(token)} and r.used_at is null and r.expires_at > ${now.toISOString()}::timestamptz and u.active`.execute(
+    db,
+  );
+  return rows.rows[0]?.login;
+}
+
+/**
+ * Sets a new password with a reset token: the token is consumed atomically (a second use
+ * fails), every session of the account is revoked and the account is unlocked.
+ * @returns the user id, or undefined for an unknown, used or expired token
+ */
+export async function resetPassword(
+  db: Executor,
+  token: string,
+  next: string,
+  cost: PasswordCost = DEFAULT_COST,
+  now: Date = new Date(),
+): Promise<string | undefined> {
+  const used = await sql<{
+    user_id: string;
+  }>`update ${sql.table(T.passwordReset)} set used_at = ${now.toISOString()}::timestamptz where token_hash = ${tokenHash(token)} and used_at is null and expires_at > ${now.toISOString()}::timestamptz returning user_id`.execute(
+    db,
+  );
+  const userId = used.rows[0]?.user_id;
+  if (userId === undefined) return undefined;
+  await sql`update ${sql.table(T.user)} set password_hash = ${await hashPassword(next, cost)}, failed_attempts = 0, locked_until = null where id = ${userId}`.execute(
+    db,
+  );
+  await sql`update ${sql.table(T.session)} set revoked = true where user_id = ${userId}`.execute(
+    db,
+  );
+  return userId;
 }
 
 /** Name of the session cookie: `__Host-` forces Secure, Path=/ and no Domain (no subdomain sharing). */

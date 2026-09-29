@@ -4,6 +4,7 @@ export type { AttachmentOptions } from './attachments.js';
 export type { ServerOptions } from './app.js';
 export {
   authenticate,
+  changePassword,
   CLEAR_SESSION_COOKIE,
   createUser,
   DEFAULT_COST,
@@ -12,11 +13,21 @@ export {
   login,
   LoginError,
   logout,
+  needsRehash,
   readSessionCookie,
+  requestPasswordReset,
+  resetPassword,
   SESSION_COOKIE,
   sessionCookie,
   verifyPassword,
 } from './auth.js';
+export {
+  DEFAULT_PASSWORD_POLICY,
+  MIN_PASSWORD_LENGTH,
+  passwordProblem,
+  pwnedPasswords,
+} from './password-policy.js';
+export type { BreachCheck, PasswordPolicy } from './password-policy.js';
 export type { PasswordCost, SessionPolicy } from './auth.js';
 export { corsHeaders, SECURITY_HEADERS } from './headers.js';
 export { createRateLimiter, takeToken } from './rate-limit.js';
