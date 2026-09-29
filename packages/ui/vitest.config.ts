@@ -7,6 +7,6 @@ export default defineConfig({
     setupFiles: ['./src/testing/setup.ts'],
     // CSS is checked by stylelint and by the token tests; components are tested for behaviour.
     css: false,
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'guide/**/*.test.{ts,tsx}'],
   },
 });

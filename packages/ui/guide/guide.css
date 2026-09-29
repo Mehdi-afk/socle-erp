@@ -1,0 +1,273 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/* Layout of the style guide only: the design system does the rest. */
+.guide {
+  max-inline-size: 72rem;
+  margin-inline: auto;
+  padding: var(--space-8) var(--space-5);
+}
+
+.guide-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-title-size);
+  font-weight: var(--font-title-weight);
+}
+
+.guide-intro {
+  max-inline-size: 48rem;
+  margin: 0 0 var(--space-5);
+  color: var(--color-shell-muted);
+}
+
+.guide-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-end: var(--space-8);
+}
+
+.guide-section {
+  margin-block-end: var(--space-10);
+}
+
+.guide-heading {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+}
+
+.guide-subheading {
+  margin: var(--space-6) 0 var(--space-3);
+  color: var(--color-shell-muted);
+  font-size: var(--font-label-size);
+  font-weight: 500;
+}
+
+.guide-note {
+  max-inline-size: 48rem;
+  margin: 0 0 var(--space-4);
+  color: var(--color-shell-muted);
+}
+
+.guide-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  margin-block-end: var(--space-4);
+}
+
+.guide-row:last-child {
+  margin-block-end: 0;
+}
+
+.guide-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--space-5);
+}
+
+.guide-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-5);
+  margin-block-end: var(--space-4);
+}
+
+/* Colours: chips filled from the token through a CSS variable set by the component. */
+.guide-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-4);
+}
+
+.guide-swatch {
+  margin: 0;
+}
+
+.guide-swatch-chip {
+  block-size: 3.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-field);
+  background: var(--swatch);
+}
+
+.guide-swatch figcaption {
+  display: flex;
+  flex-direction: column;
+  margin-block-start: var(--space-1);
+  color: var(--color-shell-muted);
+  font-size: var(--font-small-size);
+}
+
+.guide-swatch code {
+  color: var(--color-shell-text);
+}
+
+/* Contrast table. */
+.guide-table-scroll {
+  overflow-x: auto;
+}
+
+.guide-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-table th {
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--color-line);
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+  font-weight: 400;
+  text-align: start;
+}
+
+.guide-table td {
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--color-line);
+}
+
+.guide-pair-sample {
+  display: inline-block;
+  min-inline-size: 2.5rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-field);
+  background: var(--background);
+  color: var(--foreground);
+  font-weight: 500;
+  text-align: center;
+}
+
+/* Typography samples. */
+.guide-type-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-title-size);
+  font-weight: var(--font-title-weight);
+}
+
+.guide-type-heading {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+}
+
+.guide-type-body {
+  margin: 0 0 var(--space-3);
+}
+
+.guide-type-label {
+  margin: 0 0 var(--space-3);
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+.guide-type-small {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-small-size);
+  font-weight: var(--font-small-weight);
+}
+
+.guide-type-numbers {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shapes and spacing. */
+.guide-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.guide-shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 9rem;
+  block-size: 4.5rem;
+  border: 1px solid var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+.guide-shape[data-shape='card'] {
+  border-radius: var(--radius-card);
+}
+
+.guide-shape[data-shape='field'] {
+  border-radius: var(--radius-field);
+}
+
+.guide-shape[data-shape='pill'] {
+  border-radius: var(--radius-pill);
+}
+
+.guide-spaces {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  margin-block-end: var(--space-4);
+}
+
+.guide-space {
+  display: block;
+  inline-size: var(--size);
+  block-size: var(--size);
+  background: var(--color-accent);
+}
+
+/* Focus demo: the same button on each kind of background. */
+.guide-focus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.guide-focus-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 9rem;
+  min-block-size: 5rem;
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+}
+
+.guide-focus-box[data-background='canvas'] {
+  background: var(--color-canvas);
+  color: var(--color-shell-text);
+  outline: 1px solid var(--color-label);
+}
+
+.guide-focus-box[data-background='shell'] {
+  background: var(--color-shell);
+  color: var(--color-shell-text);
+}
+
+.guide-focus-box[data-background='surface'] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  outline: 1px solid var(--color-label);
+}
+
+.guide-focus-box[data-background='accent'] {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.guide-focus-box[data-background='nav'] {
+  background: var(--color-nav-active);
+  color: var(--color-on-nav-active);
+}
+
+.guide-focus-box .ui-button {
+  color: inherit;
+}
+
+.guide-reasons {
+  margin: var(--space-3) 0 0;
+  padding-inline-start: var(--space-5);
+}
