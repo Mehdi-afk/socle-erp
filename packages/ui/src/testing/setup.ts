@@ -15,11 +15,14 @@ class ResizeObserverStub {
   disconnect = (): void => undefined;
 }
 
-polyfill(globalThis, 'ResizeObserver', ResizeObserverStub);
-polyfill(Element.prototype, 'hasPointerCapture', () => false);
-polyfill(Element.prototype, 'setPointerCapture', () => undefined);
-polyfill(Element.prototype, 'releasePointerCapture', () => undefined);
-polyfill(Element.prototype, 'scrollIntoView', () => undefined);
+// The build test of the guide runs in Node, without a DOM.
+if (typeof document !== 'undefined') {
+  polyfill(globalThis, 'ResizeObserver', ResizeObserverStub);
+  polyfill(Element.prototype, 'hasPointerCapture', () => false);
+  polyfill(Element.prototype, 'setPointerCapture', () => undefined);
+  polyfill(Element.prototype, 'releasePointerCapture', () => undefined);
+  polyfill(Element.prototype, 'scrollIntoView', () => undefined);
+}
 
 afterEach(() => {
   cleanup();
