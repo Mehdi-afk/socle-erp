@@ -182,6 +182,14 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(a.session)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), expires_at timestamptz not null, revoked boolean not null default false)`.execute(
     trx,
   );
+  // Password reset: one row per request, only the hash of the token is stored; used once.
+  await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
+    trx,
+  );
+  // Failed sign-ins per client address (progressive lock-out, whatever the account tried).
+  await sql`create table if not exists ${sql.table(a.loginIp)} (ip text primary key, failures integer not null default 0, locked_until timestamptz, updated_at timestamptz not null default now())`.execute(
+    trx,
+  );
   await sql`create table if not exists ${sql.table(AUDIT_TABLE)} (seq bigint primary key, at timestamptz not null, user_id text, kind text not null, model text, record_ids jsonb not null default '[]', details jsonb not null default '{}', prev_hash text not null, hash text not null)`.execute(
     trx,
   );

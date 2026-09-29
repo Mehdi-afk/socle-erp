@@ -37,6 +37,8 @@ export const SYNC_TABLES = {
 export const AUTH_TABLES = {
   user: 'socle_user',
   session: 'socle_session',
+  passwordReset: 'socle_password_reset',
+  loginIp: 'socle_login_ip',
 } as const;
 
 /**

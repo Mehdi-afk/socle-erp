@@ -35,15 +35,25 @@ import { z, ZodError } from 'zod';
 
 import {
   authenticate,
+  changePassword,
   CLEAR_SESSION_COOKIE,
   DEFAULT_SESSION_POLICY,
   login,
   LoginError,
+  loginOf,
   logout,
   readSessionCookie,
+  requestPasswordReset,
+  resetPassword,
+  resetTokenLogin,
   sessionCookie,
   type SessionPolicy,
 } from './auth.js';
+import {
+  DEFAULT_PASSWORD_POLICY,
+  passwordProblem,
+  type PasswordPolicy,
+} from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
 import { HttpError } from './http-error.js';
 import { corsHeaders, SECURITY_HEADERS } from './headers.js';
@@ -65,6 +75,14 @@ export interface ServerOptions {
   readonly rateLimit?: BucketPolicy | undefined;
   readonly loginRateLimit?: BucketPolicy | undefined;
   readonly session?: SessionPolicy | undefined;
+  /** Length and breach rules for new passwords (default: 12 characters, no breach check). */
+  readonly passwordPolicy?: PasswordPolicy | undefined;
+  /**
+   * Delivers a password-reset token (by email, lot 2.4). Without it the reset request is
+   * accepted and ignored.
+   */
+  readonly sendPasswordReset?:
+    ((message: { login: string; token: string; host: string }) => Promise<void>) | undefined;
   /** Pino logger options (false in tests). */
   readonly logger?: boolean | undefined;
   /** File storage: the attachment endpoints exist only when it is configured. */
@@ -110,6 +128,10 @@ const deviceBody = z
 const loginBody = z
   .object({ login: z.string().min(1).max(254), password: z.string().min(1).max(1024) })
   .strict();
+const passwordText = z.string().min(1).max(1024);
+const changeBody = z.object({ current: passwordText, next: passwordText }).strict();
+const forgotBody = z.object({ login: z.string().min(1).max(254) }).strict();
+const resetBody = z.object({ token: z.string().length(43), password: passwordText }).strict();
 
 /** Field-level visibility (`groups` on fields) of a user, for RPC and synchronisation. */
 const fieldVisibility =
@@ -171,6 +193,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // JSON only: any other body type is answered with 415.
   app.removeContentTypeParser('text/plain');
   const session = options.session ?? DEFAULT_SESSION_POLICY;
+  const passwordPolicy = options.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
   const limiter = createRateLimiter(options.rateLimit ?? { capacity: 120, refillPerSecond: 20 });
   const loginLimiter = createRateLimiter(
     options.loginRateLimit ?? { capacity: 10, refillPerSecond: 0.1 },
@@ -194,7 +217,9 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // 2. Rate limit, per tenant and client address (stricter for logins).
   app.addHook('onRequest', async (request, reply) => {
     const key = `${request.headers.host ?? ''}|${request.ip}`;
-    const bucket = request.url.startsWith('/auth/login') ? loginLimiter : limiter;
+    const strict =
+      request.url.startsWith('/auth/login') || request.url.startsWith('/auth/password');
+    const bucket = strict ? loginLimiter : limiter;
     const { allowed, retryAfterMs } = bucket.take(key);
     if (!allowed) {
       void reply.header('retry-after', String(Math.ceil(retryAfterMs / 1000)));
@@ -294,6 +319,8 @@ export function buildServer(options: ServerOptions): FastifyInstance {
         body.login,
         body.password,
         session,
+        new Date(),
+        request.ip,
       );
       await journal(request, { userId, kind: 'login', details: {} });
       void reply.header('set-cookie', sessionCookie(token, session.absoluteMs));
@@ -318,6 +345,71 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     // eslint-disable-next-line security/detect-possible-timing-attacks
     if (token !== undefined) await logout(tenantOf(request).db, token);
     void reply.header('set-cookie', CLEAR_SESSION_COOKIE);
+    return { ok: true };
+  });
+
+  // ─── passwords ───────────────────────────────────────────────────────────────────────
+  const refuseWeak = async (password: string, login: string): Promise<void> => {
+    const problem = await passwordProblem(password, passwordPolicy, login);
+    if (problem !== undefined) throw new HttpError(400, 'weak_password', problem);
+  };
+
+  app.post('/auth/password/change', async (request) => {
+    const body = changeBody.parse(request.body);
+    const tenant = tenantOf(request);
+    const user = await userOf(request);
+    await refuseWeak(body.next, await loginOf(tenant.db, user.id));
+    try {
+      await changePassword(
+        tenant.db,
+        user.id,
+        body.current,
+        body.next,
+        readSessionCookie(request.headers.cookie),
+        session.cost,
+      );
+    } catch (error) {
+      if (error instanceof LoginError) {
+        throw new HttpError(403, 'invalid_credentials', 'The current password is wrong.');
+      }
+      throw error;
+    }
+    await journal(request, { userId: user.id, kind: 'password_changed', details: {} });
+    return { ok: true };
+  });
+
+  // Always the same answer, whether the account exists or not.
+  app.post('/auth/password/forgot', async (request) => {
+    const body = forgotBody.parse(request.body);
+    const found = await requestPasswordReset(tenantOf(request).db, body.login);
+    const send = options.sendPasswordReset;
+    if (found && send) {
+      const host = request.headers.host ?? '';
+      // Not awaited: the answer must not depend on the mail server's speed.
+      send({ login: body.login.toLowerCase(), token: found.token, host }).catch(
+        (error: unknown) => {
+          request.log.error({ err: error }, 'password reset mail failed');
+        },
+      );
+    }
+    return { ok: true };
+  });
+
+  app.post('/auth/password/reset', async (request) => {
+    const body = resetBody.parse(request.body);
+    const tenant = tenantOf(request);
+    const loginName = await resetTokenLogin(tenant.db, body.token);
+    if (loginName === undefined) {
+      throw new HttpError(400, 'invalid_token', 'This link is invalid or has expired.');
+    }
+    await refuseWeak(body.password, loginName);
+    const userId = await tenant.db
+      .transaction()
+      .execute((trx) => resetPassword(trx, body.token, body.password, session.cost));
+    if (userId === undefined) {
+      throw new HttpError(400, 'invalid_token', 'This link is invalid or has expired.');
+    }
+    await journal(request, { userId, kind: 'password_reset', details: {} });
     return { ok: true };
   });
 
