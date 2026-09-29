@@ -56,6 +56,10 @@
   overflow: auto;
 }
 
+.ve-row input[type='checkbox'] {
+  accent-color: var(--color-nav-active);
+}
+
 .ve-row {
   display: grid;
   grid-template-columns: var(--ve-columns);

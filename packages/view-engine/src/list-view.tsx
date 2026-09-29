@@ -384,7 +384,8 @@ export function ListView({
   }
 
   const first = loaded.total === undefined && !loaded.failed;
-  const template = `2.75rem repeat(${String(columns.length)}, minmax(8rem, 1fr))`;
+  // The first column (the name) gets more room than the others.
+  const template = `2.75rem minmax(12rem, 1.6fr) repeat(${String(Math.max(columns.length - 1, 0))}, minmax(8rem, 1fr))`;
 
   return (
     <div className="ve-list" data-density={view.density}>
