@@ -345,6 +345,7 @@ describe('HTTP server', () => {
   it('resets a password with a single-use token that expires', async () => {
     const mails: { login: string; token: string; host: string }[] = [];
     const { request, signIn, db } = await server({
+      passwordPolicy: { minLength: 12 },
       sendPasswordReset: (message) => {
         mails.push(message);
         return Promise.resolve();

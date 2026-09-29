@@ -50,8 +50,9 @@ import {
   type SessionPolicy,
 } from './auth.js';
 import {
-  DEFAULT_PASSWORD_POLICY,
+  MIN_PASSWORD_LENGTH,
   passwordProblem,
+  pwnedPasswords,
   type PasswordPolicy,
 } from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
@@ -75,7 +76,10 @@ export interface ServerOptions {
   readonly rateLimit?: BucketPolicy | undefined;
   readonly loginRateLimit?: BucketPolicy | undefined;
   readonly session?: SessionPolicy | undefined;
-  /** Length and breach rules for new passwords (default: 12 characters, no breach check). */
+  /**
+   * Length and breach rules for new passwords. Default: 12 characters and the k-anonymity
+   * breach check on; pass { minLength: 12 } to turn the check off.
+   */
   readonly passwordPolicy?: PasswordPolicy | undefined;
   /**
    * Delivers a password-reset token (by email, lot 2.4). Without it the reset request is
@@ -193,7 +197,15 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // JSON only: any other body type is answered with 415.
   app.removeContentTypeParser('text/plain');
   const session = options.session ?? DEFAULT_SESSION_POLICY;
-  const passwordPolicy = options.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
+  // The breach check is on unless the administrator gives a policy without one.
+  const passwordPolicy: PasswordPolicy = options.passwordPolicy ?? {
+    minLength: MIN_PASSWORD_LENGTH,
+    breachCheck: pwnedPasswords({
+      onError: (error) => {
+        app.log.warn({ err: error }, 'breach check unavailable');
+      },
+    }),
+  };
   const limiter = createRateLimiter(options.rateLimit ?? { capacity: 120, refillPerSecond: 20 });
   const loginLimiter = createRateLimiter(
     options.loginRateLimit ?? { capacity: 10, refillPerSecond: 0.1 },
