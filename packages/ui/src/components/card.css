@@ -1,0 +1,71 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-card {
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink);
+}
+
+/* The "confidential data" card: same shape, a soft accent background. */
+.ui-card[data-tone='accent'] {
+  background: var(--color-accent-soft);
+}
+
+.ui-card-header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-4);
+}
+
+.ui-card-title {
+  margin: 0;
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+  line-height: 1.3;
+}
+
+.ui-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Label/value pairs: the hierarchy comes from spacing and type, the separators are hairlines. */
+.ui-fields {
+  margin: 0;
+}
+
+.ui-field {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 2fr;
+  gap: var(--space-4);
+  align-items: baseline;
+  min-block-size: var(--density-row);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-line);
+}
+
+.ui-field:last-child {
+  border-block-end: 0;
+}
+
+.ui-field-label {
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+.ui-field-value {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (width < 480px) {
+  .ui-field {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}

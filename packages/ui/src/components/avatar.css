@@ -1,0 +1,96 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+  font-size: var(--font-label-size);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ui-avatar[data-size='sm'] {
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: var(--font-small-size);
+}
+
+.ui-avatar[data-size='lg'] {
+  inline-size: 4rem;
+  block-size: 4rem;
+  font-size: var(--font-heading-size);
+}
+
+.ui-avatar-image {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* Eight pastel categories: the same person always gets the same one. */
+.ui-avatar[data-category='1'] {
+  background: var(--color-category-1);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='2'] {
+  background: var(--color-category-2);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='3'] {
+  background: var(--color-category-3);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='4'] {
+  background: var(--color-category-4);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='5'] {
+  background: var(--color-category-5);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='6'] {
+  background: var(--color-category-6);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='7'] {
+  background: var(--color-category-7);
+  color: var(--color-on-category);
+}
+
+.ui-avatar[data-category='8'] {
+  background: var(--color-category-8);
+  color: var(--color-on-category);
+}
+
+.ui-avatar-stack {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each avatar overlaps the previous one on the reading side, whatever the direction. */
+.ui-avatar-stack > li + li {
+  margin-inline-start: calc(var(--space-2) * -1);
+}
+
+.ui-avatar-stack .ui-avatar {
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+
+.ui-avatar-more {
+  background: var(--color-surface-sunken);
+}

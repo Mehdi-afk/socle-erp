@@ -1,0 +1,64 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/*
+ * Base of the design system: box model, page colours and the double focus ring. Everything reads
+ * the tokens of tokens.css; a component never sets a colour of its own.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-canvas);
+  color: var(--color-shell-text);
+  font-family: var(--font-sans);
+  font-size: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-size: var(--font-body-size);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Double focus ring: an inner ring and an outer ring in opposite colours, so that one of the two
+ * stands out on any background (checked by the token tests).
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus-outer);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-focus-inner);
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid canvastext;
+  }
+}
+
+.ui-sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ui-icon {
+  flex: none;
+}
+
+/* Arrows and chevrons point the other way in right-to-left languages; other icons do not. */
+:dir(rtl) .ui-icon[data-flip='true'] {
+  transform: scaleX(-1);
+}

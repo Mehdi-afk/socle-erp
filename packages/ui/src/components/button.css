@@ -1,0 +1,104 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-button {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-block-size: 40px;
+  padding-inline: var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.ui-button[data-size='sm'] {
+  min-block-size: 32px;
+  padding-inline: var(--space-4);
+  font-size: var(--font-label-size);
+}
+
+/* The main action: the accent is a background, the text on it is computed to stay readable. */
+.ui-button[data-variant='primary'] {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.ui-button[data-variant='primary']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-ink) 8%, var(--color-accent));
+}
+
+.ui-button[data-variant='secondary'] {
+  border-color: var(--color-line);
+  background: var(--color-surface-sunken);
+}
+
+.ui-button[data-variant='secondary']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface-sunken));
+}
+
+.ui-button[data-variant='ghost']:hover:not(:disabled) {
+  background: var(--color-surface-sunken);
+}
+
+.ui-button[data-variant='danger'] {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.ui-button[data-variant='danger']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-danger-soft));
+}
+
+/* Round quick action: an icon and nothing else. */
+.ui-button[data-shape='round'] {
+  inline-size: 40px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.ui-button[data-shape='round'][data-size='sm'] {
+  inline-size: 32px;
+}
+
+.ui-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Running: the label stays, a spinner turns before it. */
+.ui-button[data-loading='true'] {
+  cursor: progress;
+}
+
+.ui-button[data-loading='true']::before {
+  content: '';
+  inline-size: 1em;
+  block-size: 1em;
+  border: 2px solid currentcolor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: ui-spin 800ms linear infinite;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button[data-loading='true']::before {
+    animation-duration: 3s;
+  }
+}

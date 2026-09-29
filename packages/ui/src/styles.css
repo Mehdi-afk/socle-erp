@@ -1,0 +1,6 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/* Everything the design system needs, in order: the variables, the fonts, the base rules. */
+@import url('./tokens.css');
+@import url('./fonts.css');
+@import url('./base.css');
