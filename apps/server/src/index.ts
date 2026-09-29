@@ -5,6 +5,7 @@ export type { ServerOptions } from './app.js';
 export {
   authenticate,
   changePassword,
+  checkCredentials,
   CLEAR_SESSION_COOKIE,
   createUser,
   csrfMatches,
@@ -17,6 +18,7 @@ export {
   LoginError,
   logout,
   needsRehash,
+  openSession,
   readSessionCookie,
   requestPasswordReset,
   resetPassword,
@@ -34,6 +36,8 @@ export {
 } from './password-policy.js';
 export type { BreachCheck, PasswordPolicy } from './password-policy.js';
 export type { PasswordCost, SessionInfo, SessionPolicy } from './auth.js';
+export { DEFAULT_MFA_GROUPS } from './mfa.js';
+export type { MfaOptions, MfaState } from './mfa.js';
 export { corsHeaders, SECURITY_HEADERS } from './headers.js';
 export { createRateLimiter, takeToken } from './rate-limit.js';
 export type { Bucket, BucketPolicy } from './rate-limit.js';

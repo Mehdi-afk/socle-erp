@@ -210,6 +210,9 @@ importers:
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
+      fast-check:
+        specifier: ^4.10.2
+        version: 4.10.2
 
   apps/web: {}
 

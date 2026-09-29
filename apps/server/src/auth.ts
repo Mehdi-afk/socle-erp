@@ -170,19 +170,19 @@ async function recordIpFailure(
 }
 
 /**
- * Checks a login and password; on success opens a session and returns its token (a new one
- * at each login: session fixation is impossible).
+ * Checks a login and password (lock-outs, generic failure, re-hash) without opening a session:
+ * the caller may still ask for a second factor.
+ * @returns the user id
  * @throws {@link LoginError}
  */
-export async function login(
+export async function checkCredentials(
   db: Executor,
   loginName: string,
   password: string,
   policy: SessionPolicy = DEFAULT_SESSION_POLICY,
   now: Date = new Date(),
   ip?: string,
-  userAgent?: string,
-): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
+): Promise<string> {
   // A locked address gets the generic answer after the same work, and does not touch the
   // account's own counter (an attacker must not lock a victim out from a locked address).
   if (ip !== undefined && (await ipIsLocked(db, ip, now))) {
@@ -230,12 +230,44 @@ export async function login(
       db,
     );
   }
+  return user.id;
+}
+
+/**
+ * Opens a session for a user whose identity was just proved (password, and second factor when
+ * there is one): a new token every time, so session fixation is impossible.
+ */
+export async function openSession(
+  db: Executor,
+  userId: string,
+  policy: SessionPolicy = DEFAULT_SESSION_POLICY,
+  now: Date = new Date(),
+  ip?: string,
+  userAgent?: string,
+): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + policy.absoluteMs);
-  await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent) values (${tokenHash(token)}, ${user.id}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz, ${ip ?? null}, ${userAgent?.slice(0, 300) ?? null})`.execute(
+  await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent) values (${tokenHash(token)}, ${userId}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz, ${ip ?? null}, ${userAgent?.slice(0, 300) ?? null})`.execute(
     db,
   );
-  return { token, expiresAt, userId: user.id };
+  return { token, expiresAt, userId };
+}
+
+/**
+ * Checks a login and password and opens a session (no second factor).
+ * @throws {@link LoginError}
+ */
+export async function login(
+  db: Executor,
+  loginName: string,
+  password: string,
+  policy: SessionPolicy = DEFAULT_SESSION_POLICY,
+  now: Date = new Date(),
+  ip?: string,
+  userAgent?: string,
+): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
+  const userId = await checkCredentials(db, loginName, password, policy, now, ip);
+  return openSession(db, userId, policy, now, ip, userAgent);
 }
 
 /**

@@ -189,6 +189,17 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create unique index if not exists ${sql.id(`${a.session}_id_idx`)} on ${sql.table(a.session)} (id)`.execute(
     trx,
   );
+  // Second factor: the TOTP secret is stored encrypted (never readable from the database alone);
+  // `last_step` refuses the replay of a code; recovery codes and sign-in challenges keep hashes.
+  await sql`create table if not exists ${sql.table(a.totp)} (user_id text primary key references ${sql.table(a.user)} (id) on delete cascade, secret_enc text not null, confirmed_at timestamptz, last_step bigint not null default 0)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(a.recovery)} (code_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, used_at timestamptz)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(a.challenge)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, attempts integer not null default 0)`.execute(
+    trx,
+  );
   // Password reset: one row per request, only the hash of the token is stored; used once.
   await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
     trx,
