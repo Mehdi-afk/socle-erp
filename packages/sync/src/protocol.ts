@@ -160,6 +160,42 @@ export async function verifyMutation(key: SigningPublicKey, mutation: Mutation):
   return verify(key, signature, signedBytes(unsigned));
 }
 
+/** How far a signed status request may be from the server's clock (5 minutes). */
+export const DEVICE_STATUS_SKEW_MS = 300_000;
+
+/** The bytes a device signs to ask for its own status: not usable for anything else. */
+function deviceStatusBytes(deviceId: string, timestamp: number): Uint8Array {
+  return canonicalBytes({ purpose: 'device-status', deviceId, timestamp });
+}
+
+/**
+ * A device proves it holds its key to learn its status without any session (a revoked device has
+ * none: its sessions were cut, and it must still learn that it has to wipe its data).
+ * @public
+ */
+export async function signDeviceStatus(
+  key: SigningPrivateKey,
+  deviceId: string,
+  now: number = Date.now(),
+): Promise<{ readonly timestamp: number; readonly signature: string }> {
+  return { timestamp: now, signature: await sign(key, deviceStatusBytes(deviceId, now)) };
+}
+
+/**
+ * Checks a signed status request: made by the key, for this device, within 5 minutes of `now`.
+ * @public
+ */
+export async function verifyDeviceStatus(
+  key: SigningPublicKey,
+  deviceId: string,
+  proof: { readonly timestamp: number; readonly signature: string },
+  now: number = Date.now(),
+): Promise<boolean> {
+  if (!Number.isSafeInteger(proof.timestamp)) return false;
+  if (Math.abs(now - proof.timestamp) > DEVICE_STATUS_SKEW_MS) return false;
+  return verify(key, proof.signature, deviceStatusBytes(deviceId, proof.timestamp));
+}
+
 /**
  * What the server answers for each pushed mutation.
  * @public

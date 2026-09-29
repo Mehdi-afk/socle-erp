@@ -4,6 +4,7 @@
 // CORS → rate limit → tenant → parsing (JSON only, size-limited) → Zod validation →
 // authentication (session cookie) → authorisation (the ORM: ACL, record rules, row-level
 // security) → action. Errors never expose internals.
+import { importPublicKey } from '@socle/crypto';
 import {
   AccessError,
   canSeeField,
@@ -24,16 +25,26 @@ import {
   createPgStorage,
   createPgSyncBackend,
   deviceStatus,
+  findDevice,
+  listDevices,
+  revokeDevice,
   appendAudit,
   auditEntry,
   registerDevice,
   translateCommitError,
 } from '@socle/orm-pg';
-import { pullChanges, pushMutations, rightsFingerprint, type RunInTransaction } from '@socle/sync';
+import {
+  pullChanges,
+  pushMutations,
+  rightsFingerprint,
+  verifyDeviceStatus,
+  type RunInTransaction,
+} from '@socle/sync';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 
 import {
+  attachSessionToDevice,
   authenticate,
   changePassword,
   checkCredentials,
@@ -51,6 +62,7 @@ import {
   requestPasswordReset,
   resetPassword,
   resetTokenLogin,
+  revokeDeviceSessions,
   revokeSession,
   rotateSession,
   sessionCookie,
@@ -118,6 +130,8 @@ export interface ServerOptions {
    * step. The relying party is the tenant's own host.
    */
   readonly passkeys?: PasskeyOptions | undefined;
+  /** Active synchronising devices one user may have (default 20). */
+  readonly maxDevicesPerUser?: number | undefined;
   /**
    * Single sign-on with OpenID Connect providers (Google, Microsoft, any other). Each tenant's
    * redirect URI is https://<tenant host>/auth/oidc/callback.
@@ -158,8 +172,17 @@ const pullQuery = z
 const pushBody = z
   .object({ deviceId: z.string().max(64), mutations: z.array(z.unknown()).max(500) })
   .strict();
+const deviceId = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/);
 const deviceBody = z
-  .object({ id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/), publicKey: z.string().max(100) })
+  .object({
+    id: deviceId,
+    publicKey: z.string().max(100),
+    name: z.string().trim().min(1).max(80).optional(),
+  })
+  .strict();
+const deviceParams = z.object({ id: deviceId });
+const deviceStatusBody = z
+  .object({ timestamp: z.number().int(), signature: z.string().min(1).max(200) })
   .strict();
 const loginBody = z
   .object({ login: z.string().min(1).max(254), password: z.string().min(1).max(1024) })
@@ -300,7 +323,9 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.addHook('preHandler', (request) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return Promise.resolve();
     const path = request.url.split('?')[0] ?? '';
-    if (CSRF_EXEMPT.has(path)) return Promise.resolve();
+    if (CSRF_EXEMPT.has(path) || /^\/sync\/devices\/[^/]+\/status$/.test(path)) {
+      return Promise.resolve();
+    }
     // A second-factor step made with a sign-in challenge (a secret only the browser that
     // just typed the password holds) has no session token yet: the challenge is its proof.
     const challenge = (request.body as { challenge?: unknown } | null | undefined)?.challenge;
@@ -663,20 +688,100 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   }
 
   // ─── synchronisation (§6.3) ──────────────────────────────────────────────────────────
+  // ─── devices (registry, revocation, remote wipe) ─────────────────────────────────────
+  const maxDevices = options.maxDevicesPerUser ?? 20;
+
+  // Registers the calling device, or — for a known device of the same user with the same key —
+  // ties the new session to it (signing in again on the same phone).
   app.post('/sync/devices', async (request) => {
     const body = deviceBody.parse(request.body);
+    const tenant = tenantOf(request);
     const user = await userOf(request);
-    await registerDevice(tenantOf(request).db, {
-      id: body.id,
+    const token = readSessionCookie(request.headers.cookie) ?? '';
+    const existing = await findDevice(tenant.db, body.id);
+    if (existing) {
+      // The same answer whoever owns it: nobody learns that another user's device id exists.
+      if (existing.userId !== user.id || existing.publicKey !== body.publicKey) {
+        throw new HttpError(409, 'device_exists', 'This device id is already registered.');
+      }
+      if (existing.status === 'revoked') {
+        throw new HttpError(403, 'device_revoked', 'This device was revoked.');
+      }
+      await attachSessionToDevice(tenant.db, token, body.id);
+      return { ok: true };
+    }
+    const active = (await listDevices(tenant.db, user.id)).filter((d) => d.status === 'active');
+    if (active.length >= maxDevices) {
+      throw new HttpError(409, 'too_many_devices', 'Too many devices: revoke one first.');
+    }
+    try {
+      await registerDevice(tenant.db, {
+        id: body.id,
+        userId: user.id,
+        publicKey: body.publicKey,
+        name: body.name,
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new HttpError(409, 'device_exists', 'This device id is already registered.');
+      }
+      throw error;
+    }
+    await attachSessionToDevice(tenant.db, token, body.id);
+    await journal(request, {
       userId: user.id,
-      publicKey: body.publicKey,
+      kind: 'device_registered',
+      details: { device: body.id, name: body.name?.slice(0, 80) ?? '' },
     });
     return { ok: true };
   });
 
+  app.get('/sync/devices', async (request) => {
+    const user = await userOf(request);
+    return { devices: await listDevices(tenantOf(request).db, user.id) };
+  });
+
+  // The status of one of the caller's own devices (another user's device is "unknown").
   app.get<{ Params: { id: string } }>('/sync/devices/:id', async (request) => {
-    await userOf(request);
-    return { status: await deviceStatus(tenantOf(request).db, request.params.id) };
+    const user = await userOf(request);
+    return { status: await deviceStatus(tenantOf(request).db, request.params.id, user.id) };
+  });
+
+  // The owner revokes a device: it refuses its pushes, its sessions are cut, and it wipes its
+  // local data as soon as it asks for its status (below).
+  app.delete<{ Params: { id: string } }>('/sync/devices/:id', async (request) => {
+    const user = await userOf(request);
+    const { id: deviceId } = deviceParams.parse(request.params);
+    const tenant = tenantOf(request);
+    if (!(await revokeDevice(tenant.db, deviceId, user.id))) {
+      throw new HttpError(404, 'not_found', 'Unknown device.');
+    }
+    await revokeDeviceSessions(tenant.db, deviceId);
+    await journal(request, {
+      userId: user.id,
+      kind: 'device_revoked',
+      details: { device: deviceId },
+    });
+    return { ok: true };
+  });
+
+  // A device learns its status without any session by signing the request with its own key: a
+  // revoked device has no session left, and must still learn that it has to wipe its data. A
+  // wrong or stale proof is a 401 — never an answer the device could mistake for "unknown", which
+  // makes it wipe.
+  app.post<{ Params: { id: string } }>('/sync/devices/:id/status', async (request) => {
+    const { id: deviceId } = deviceParams.parse(request.params);
+    const proof = deviceStatusBody.parse(request.body);
+    const device = await findDevice(tenantOf(request).db, deviceId);
+    if (!device) return { status: 'unknown' };
+    const valid = await verifyDeviceStatus(
+      await importPublicKey(device.publicKey),
+      deviceId,
+      proof,
+    );
+    if (!valid)
+      throw new HttpError(401, 'invalid_proof', 'The proof of the device key is invalid.');
+    return { status: device.status };
   });
 
   app.get('/sync/pull', async (request) => {

@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { exportPublicKey, generateSigningKeyPair, uuidv7 } from '@socle/crypto';
 import { buildModelRegistry, buildSecurityPolicy, defineModel, f } from '@socle/framework';
 import { applySchema, createPgDatabase, verifyAudit, type Executor } from '@socle/orm-pg';
-import { signMutation } from '@socle/sync';
+import { signDeviceStatus, signMutation } from '@socle/sync';
 import { sql } from 'kysely';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -1387,6 +1387,234 @@ describe('HTTP server', () => {
       ).toBe(404);
       expect((await (await passkeyLogin(phone, 'alice')).answer()).statusCode).toBe(401);
     });
+  });
+
+  describe('devices', () => {
+    async function withDevices() {
+      const s = await server({ loginRateLimit: { capacity: 1000, refillPerSecond: 1000 } });
+      const alice = await s.signIn('alice@acme.test', 'alice-pass');
+      const bob = await s.signIn('bob@acme.test', 'bob-pass');
+      const newDevice = async () => {
+        const keys = await generateSigningKeyPair();
+        return {
+          keys,
+          id: `dev-${randomBytes(6).toString('hex')}`,
+          publicKey: await exportPublicKey(keys.publicKey),
+        };
+      };
+      const register = (cookie: string, device: { id: string; publicKey: string }, name?: string) =>
+        s.request('POST', '/sync/devices', {
+          cookie,
+          body: { id: device.id, publicKey: device.publicKey, ...(name ? { name } : {}) },
+        });
+      const proofRequest = async (
+        device: { id: string; keys: { privateKey: never } },
+        overrides: { timestamp?: number; signature?: string } = {},
+        cookie?: string,
+      ) => {
+        const proof = await signDeviceStatus(device.keys.privateKey, device.id);
+        return s.request('POST', `/sync/devices/${device.id}/status`, {
+          ...(cookie ? { cookie } : {}),
+          body: { ...proof, ...overrides },
+        });
+      };
+      return { ...s, alice, bob, newDevice, register, proofRequest };
+    }
+
+    it('registers and lists a device with its name, never showing its key', async () => {
+      const { request, register, newDevice, alice, db } = await withDevices();
+      const phone = await newDevice();
+      expect((await register(alice, phone, "Alice's phone")).statusCode).toBe(200);
+      const listed = await request('GET', '/sync/devices', { cookie: alice });
+      expect(
+        listed.json<{ devices: { id: string; name: string; status: string }[] }>().devices,
+      ).toMatchObject([{ id: phone.id, name: "Alice's phone", status: 'active' }]);
+      expect(listed.body).not.toContain(phone.publicKey);
+      // The session is tied to the device.
+      const tied = await sql<{
+        device_id: string;
+      }>`select device_id from socle_session where device_id is not null`.execute(db);
+      expect(tied.rows).toEqual([{ device_id: phone.id }]);
+      // The registration is journaled.
+      const kinds = await sql<{
+        kind: string;
+      }>`select kind from socle_audit where kind = 'device_registered'`.execute(db);
+      expect(kinds.rows).toHaveLength(1);
+    });
+
+    it('recognises the same device on a new sign-in and refuses anyone else’s id or key', async () => {
+      const { request, register, newDevice, alice, bob, signIn, db } = await withDevices();
+      const phone = await newDevice();
+      await register(alice, phone);
+      // Another user, or the same user with another key, cannot take the id.
+      const taken = await register(bob, phone);
+      expect([taken.statusCode, taken.json<{ error: string }>().error]).toEqual([
+        409,
+        'device_exists',
+      ]);
+      const swapped = await register(alice, {
+        id: phone.id,
+        publicKey: (await newDevice()).publicKey,
+      });
+      expect(swapped.statusCode).toBe(409);
+      // Signing in again on the same phone attaches the new session to it.
+      const second = await signIn('alice@acme.test', 'alice-pass');
+      expect((await register(second, phone)).statusCode).toBe(200);
+      const tied = await sql<{
+        n: string;
+      }>`select count(*) as n from socle_session where device_id = ${phone.id}`.execute(db);
+      expect(Number(tied.rows[0]?.n)).toBe(2);
+      expect(
+        (await request('GET', '/sync/devices', { cookie: second })).json<{ devices: unknown[] }>()
+          .devices,
+      ).toHaveLength(1);
+    });
+
+    it('shows a user only their own devices', async () => {
+      const { request, register, newDevice, alice, bob } = await withDevices();
+      const phone = await newDevice();
+      await register(alice, phone);
+      expect((await request('GET', `/sync/devices/${phone.id}`, { cookie: alice })).json()).toEqual(
+        { status: 'active' },
+      );
+      expect((await request('GET', `/sync/devices/${phone.id}`, { cookie: bob })).json()).toEqual({
+        status: 'unknown',
+      });
+      expect((await request('GET', '/sync/devices', { cookie: bob })).json()).toEqual({
+        devices: [],
+      });
+    });
+
+    it('lets a device prove its status without a session, and never mistakes a bad proof for "unknown"', async () => {
+      const { request, register, newDevice, alice, proofRequest } = await withDevices();
+      const phone = await newDevice();
+      await register(alice, phone);
+      const ok = await proofRequest(phone as never);
+      expect([ok.statusCode, ok.json()]).toEqual([200, { status: 'active' }]);
+      // A stale cookie in the way (an expired session) does not get in the way of the proof.
+      expect(
+        (await proofRequest(phone as never, {}, `__Host-socle_session=${'a'.repeat(43)}`))
+          .statusCode,
+      ).toBe(200);
+      // Wrong signature, stale or altered timestamp: 401, an answer that never means "wipe".
+      const stranger = await newDevice();
+      const forged = await signDeviceStatus(stranger.keys.privateKey, phone.id);
+      for (const bad of [
+        forged,
+        {
+          timestamp: Date.now() - 3_600_000,
+          signature: (
+            await signDeviceStatus(phone.keys.privateKey, phone.id, Date.now() - 3_600_000)
+          ).signature,
+        },
+        {
+          timestamp: Date.now() + 1,
+          signature: (await signDeviceStatus(phone.keys.privateKey, phone.id)).signature,
+        },
+      ]) {
+        const answer = await proofRequest(phone as never, bad);
+        expect([answer.statusCode, answer.json<{ error: string }>().error]).toEqual([
+          401,
+          'invalid_proof',
+        ]);
+      }
+      // A device the server does not know is "unknown" (it wipes), and junk is refused.
+      const ghost = await newDevice();
+      expect((await proofRequest(ghost as never)).json()).toEqual({ status: 'unknown' });
+      expect(
+        (
+          await request('POST', '/sync/devices/bad!id/status', {
+            body: { timestamp: 1, signature: 'x' },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await request('POST', `/sync/devices/${phone.id}/status`, {
+            body: { timestamp: 'now', signature: 'x' },
+          })
+        ).statusCode,
+      ).toBe(400);
+    });
+
+    it('revokes a device: pushes refused, its sessions cut, remote wipe signal, other sessions kept', async () => {
+      const { request, register, newDevice, alice, bob, signIn, proofRequest, db } =
+        await withDevices();
+      const phone = await newDevice();
+      const laptop = await newDevice();
+      await register(alice, phone);
+      const onPhone = alice;
+      const onLaptop = await signIn('alice@acme.test', 'alice-pass');
+      await register(onLaptop, laptop);
+      const elsewhere = await signIn('alice@acme.test', 'alice-pass'); // a session of no device
+
+      // Only the owner can revoke.
+      expect(
+        (await request('DELETE', `/sync/devices/${phone.id}`, { cookie: bob })).statusCode,
+      ).toBe(404);
+      expect(
+        (await request('DELETE', '/sync/devices/bad!id', { cookie: onLaptop })).statusCode,
+      ).toBe(400);
+      expect(
+        (await request('DELETE', `/sync/devices/${phone.id}`, { cookie: onLaptop })).statusCode,
+      ).toBe(200);
+
+      // The phone's session is dead, the laptop's and the unattached one are not.
+      expect((await request('GET', '/sync/pull', { cookie: onPhone })).statusCode).toBe(401);
+      expect((await request('GET', '/sync/pull', { cookie: onLaptop })).statusCode).toBe(200);
+      expect((await request('GET', '/sync/pull', { cookie: elsewhere })).statusCode).toBe(200);
+      // No session left, but the phone can still learn it must wipe, by signing.
+      expect((await proofRequest(phone as never)).json()).toEqual({ status: 'revoked' });
+      expect((await proofRequest(laptop as never)).json()).toEqual({ status: 'active' });
+      const listed = (await request('GET', '/sync/devices', { cookie: onLaptop })).json<{
+        devices: { id: string; status: string; revokedAt: string | null }[];
+      }>().devices;
+      expect(listed.map((d) => [d.id, d.status]).sort()).toEqual(
+        [
+          [laptop.id, 'active'],
+          [phone.id, 'revoked'],
+        ].sort(),
+      );
+      expect(listed.find((d) => d.id === phone.id)?.revokedAt).not.toBeNull();
+      // A revoked device cannot come back with the same id.
+      const again = await register(onLaptop, phone);
+      expect([again.statusCode, again.json<{ error: string }>().error]).toEqual([
+        403,
+        'device_revoked',
+      ]);
+      const kinds = await sql<{
+        kind: string;
+      }>`select kind from socle_audit where kind = 'device_revoked'`.execute(db);
+      expect(kinds.rows).toHaveLength(1);
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+
+    it('keeps the device link through a session rotation and caps the number of devices', async () => {
+      const { request, register, newDevice, alice } = await withDevices();
+      const phone = await newDevice();
+      await register(alice, phone);
+      // Rotation (a password change gives the session a new token): still the phone's session.
+      const changed = await request('POST', '/auth/password/change', {
+        cookie: alice,
+        body: { current: 'alice-pass', next: 'a brand new password' },
+      });
+      const renewed = String(changed.headers['set-cookie']).split(';')[0] as string;
+      expect(
+        (await request('DELETE', `/sync/devices/${phone.id}`, { cookie: renewed })).statusCode,
+      ).toBe(200);
+      expect((await request('GET', '/sync/pull', { cookie: renewed })).statusCode).toBe(401);
+
+      // At most 20 active devices.
+      const fresh = await withDevices();
+      for (let i = 0; i < 20; i++) {
+        expect((await fresh.register(fresh.alice, await fresh.newDevice())).statusCode).toBe(200);
+      }
+      const over = await fresh.register(fresh.alice, await fresh.newDevice());
+      expect([over.statusCode, over.json<{ error: string }>().error]).toEqual([
+        409,
+        'too_many_devices',
+      ]);
+    }, 60_000);
   });
 
   it('consumes a reset token atomically: of two simultaneous uses only one wins', async () => {
