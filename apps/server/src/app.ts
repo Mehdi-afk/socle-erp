@@ -65,8 +65,8 @@ import {
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
 import {
   createChallenge,
+  mfaMethods,
   mfaRequired,
-  mfaState,
   registerMfaRoutes,
   type MfaOptions,
 } from './mfa.js';
@@ -414,11 +414,13 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       // short-lived challenge to present with the code.
       const mfa = options.mfa;
       if (mfa) {
-        const state = await mfaState(tenant.db, userId);
-        if (state === 'enrolled') {
+        const have = await mfaMethods(tenant.db, userId);
+        if (have.totp || have.email) {
           return {
             ok: true,
             mfa: 'verify',
+            // What the account can answer with, so that the client shows the right choices.
+            methods: [...(have.totp ? ['totp', 'recovery'] : []), ...(have.email ? ['email'] : [])],
             challenge: await createChallenge(tenant.db, userId),
           };
         }
@@ -426,6 +428,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
           return {
             ok: true,
             mfa: 'enroll',
+            methods: ['totp', ...(mfa.sendCode ? ['email'] : [])],
             challenge: await createChallenge(tenant.db, userId),
           };
         }

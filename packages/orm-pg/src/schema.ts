@@ -42,6 +42,7 @@ export const AUTH_TABLES = {
   totp: 'socle_mfa_totp',
   recovery: 'socle_mfa_recovery',
   challenge: 'socle_mfa_challenge',
+  emailOtp: 'socle_mfa_email_otp',
 } as const;
 
 /**

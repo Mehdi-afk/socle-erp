@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { loginOf, verifyPassword } from './auth.js';
 import { HttpError } from './http-error.js';
+import { emailEnabled, issueEmailCode, setEmailEnabled, verifyEmailCode } from './mfa-email.js';
 import { open, seal } from './secret-box.js';
 import type { TenantRuntime } from './tenants.js';
 import { base32Encode, newTotpSecret, otpauthUri, verifyTotp } from './totp.js';
@@ -30,6 +31,12 @@ export interface MfaOptions {
   readonly issuer?: string | undefined;
   /** Groups whose members must have a second factor (default `base.group_system`). */
   readonly requiredGroups?: readonly string[] | undefined;
+  /**
+   * Delivers a one-time code by email (lot 2.4 plugs the SMTP sending in). Without it the email
+   * method is not offered.
+   */
+  readonly sendCode?:
+    ((message: { login: string; code: string; host: string }) => Promise<void>) | undefined;
 }
 
 export const DEFAULT_MFA_GROUPS: readonly string[] = ['base.group_system'];
@@ -47,6 +54,17 @@ export async function mfaState(db: Executor, userId: string): Promise<MfaState> 
   const row = rows.rows[0];
   if (!row) return 'none';
   return row.confirmed_at === null ? 'pending' : 'enrolled';
+}
+
+/** The second factors a user has set up. */
+export async function mfaMethods(
+  db: Executor,
+  userId: string,
+): Promise<{ readonly totp: boolean; readonly email: boolean }> {
+  return {
+    totp: (await mfaState(db, userId)) === 'enrolled',
+    email: await emailEnabled(db, userId),
+  };
 }
 
 /** True when one of the user's groups (implied ones included) requires a second factor. */
@@ -255,12 +273,19 @@ const verifyBody = z
     challenge: challengeText,
     code: codeText.optional(),
     recovery: recoveryText.optional(),
+    emailCode: codeText.optional(),
   })
   .strict()
-  .refine((body) => (body.code === undefined) !== (body.recovery === undefined), {
-    message: 'Give either code or recovery.',
-  });
+  .refine(
+    (body) =>
+      [body.code, body.recovery, body.emailCode].filter((value) => value !== undefined).length ===
+      1,
+    { message: 'Give exactly one of code, recovery or emailCode.' },
+  );
+const emailConfirmBody = z.object({ challenge: challengeText.optional(), code: codeText }).strict();
+const passwordOnlyBody = z.object({ password: z.string().min(1).max(1024) }).strict();
 const setupBody = z.object({ challenge: challengeText.optional() }).strict();
+const sendBody = z.object({ challenge: challengeText }).strict();
 const confirmBody = z.object({ challenge: challengeText.optional(), code: codeText }).strict();
 const disableBody = z
   .object({
@@ -293,6 +318,8 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
     const db = tenantOf(request).db;
     return {
       state: await mfaState(db, user.id),
+      methods: await mfaMethods(db, user.id),
+      emailAvailable: options.sendCode !== undefined,
       required: await mfaRequired(db, tenantOf(request).security, options, user.id),
       recoveryCodesLeft: await unusedRecoveryCodes(db, user.id),
     };
@@ -302,8 +329,19 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
     const body = verifyBody.parse(request.body);
     const db = tenantOf(request).db;
     const userId = await challengeUser(db, body.challenge);
-    if (userId === undefined || (await mfaState(db, userId)) !== 'enrolled') throw invalidCode();
-    const kind = await verifySecondFactor(db, options, userId, body);
+    const methods = userId === undefined ? undefined : await mfaMethods(db, userId);
+    if (userId === undefined || methods === undefined || (!methods.totp && !methods.email)) {
+      throw invalidCode();
+    }
+    let kind: 'totp' | 'recovery' | 'email' | undefined;
+    if (body.emailCode !== undefined) {
+      kind =
+        methods.email && (await verifyEmailCode(db, options, userId, body.emailCode))
+          ? 'email'
+          : undefined;
+    } else {
+      kind = await verifySecondFactor(db, options, userId, body);
+    }
     if (kind === undefined) {
       await failChallenge(db, body.challenge);
       await journal(request, { userId, kind: 'mfa_failed', details: {} });
@@ -336,6 +374,102 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
     if (who.challenge === undefined) return { ok: true, recoveryCodes: codes };
     await endChallenge(db, who.challenge);
     return { ...(await deps.finishLogin(request, reply, who.userId)), recoveryCodes: codes };
+  });
+
+  // ─── one-time codes by email ───────────────────────────────────────────────────────────
+
+  /** Sends a fresh code (at most one a minute); the answer never tells whether one was sent. */
+  const sendEmailCode = async (request: FastifyRequest, userId: string): Promise<void> => {
+    const send = options.sendCode;
+    if (!send) throw new HttpError(409, 'email_unavailable', 'Codes by email are not available.');
+    const db = tenantOf(request).db;
+    const code = await issueEmailCode(db, options, userId);
+    if (code === undefined) return;
+    const message = { login: await loginOf(db, userId), code, host: request.headers.host ?? '' };
+    // Not awaited: the answer must not depend on the mail server's speed.
+    send(message).catch((error: unknown) => {
+      request.log.error({ err: error }, 'mfa code mail failed');
+    });
+  };
+
+  /**
+   * A sign-in challenge only proves the password. It may set up a first factor (enrolment), but
+   * never add one to an account that already has one: whoever holds the password and the
+   * mailbox could otherwise step around the authenticator app. Adding a method needs a session.
+   */
+  const refuseDowngrade = async (
+    request: FastifyRequest,
+    who: { userId: string; challenge?: string },
+  ): Promise<void> => {
+    if (who.challenge === undefined) return;
+    const have = await mfaMethods(tenantOf(request).db, who.userId);
+    if (have.totp || have.email) {
+      throw new HttpError(409, 'mfa_enrolled', 'Sign in with your second factor first.');
+    }
+  };
+
+  // Asks for a code during sign-in (the account must have turned the method on).
+  app.post('/auth/mfa/email/send', async (request) => {
+    const body = sendBody.parse(request.body);
+    const who = await subject(request, body.challenge);
+    if (!(await emailEnabled(tenantOf(request).db, who.userId))) {
+      throw new HttpError(409, 'email_not_enabled', 'Codes by email are not turned on.');
+    }
+    await sendEmailCode(request, who.userId);
+    return { ok: true };
+  });
+
+  // Turning the method on: a first code proves the mailbox is the user's.
+  app.post('/auth/mfa/email/enable', async (request) => {
+    const body = setupBody.parse(request.body);
+    const who = await subject(request, body.challenge);
+    await refuseDowngrade(request, who);
+    if (await emailEnabled(tenantOf(request).db, who.userId)) {
+      throw new HttpError(409, 'mfa_enrolled', 'Codes by email are already turned on.');
+    }
+    await sendEmailCode(request, who.userId);
+    return { ok: true };
+  });
+
+  app.post('/auth/mfa/email/confirm', async (request, reply) => {
+    const body = emailConfirmBody.parse(request.body);
+    const db = tenantOf(request).db;
+    const who = await subject(request, body.challenge);
+    await refuseDowngrade(request, who);
+    if (!(await verifyEmailCode(db, options, who.userId, body.code))) {
+      if (who.challenge !== undefined) await failChallenge(db, who.challenge);
+      throw invalidCode();
+    }
+    await setEmailEnabled(db, who.userId, true);
+    await journal(request, { userId: who.userId, kind: 'mfa_email_enabled', details: {} });
+    if (who.challenge === undefined) return { ok: true };
+    await endChallenge(db, who.challenge);
+    return deps.finishLogin(request, reply, who.userId);
+  });
+
+  app.post('/auth/mfa/email/disable', async (request) => {
+    const body = passwordOnlyBody.parse(request.body);
+    const user = await userOf(request);
+    const tenant = tenantOf(request);
+    // A required role keeps at least one factor: it cannot drop its only one.
+    if (
+      (await mfaRequired(tenant.db, tenant.security, options, user.id)) &&
+      !(await mfaMethods(tenant.db, user.id)).totp
+    ) {
+      throw new HttpError(403, 'mfa_required', 'Your role requires a second factor.');
+    }
+    const stored = await sql<{
+      password_hash: string;
+    }>`select password_hash from ${sql.table(T.user)} where id = ${user.id}`.execute(tenant.db);
+    if (
+      stored.rows[0] === undefined ||
+      !(await verifyPassword(stored.rows[0].password_hash, body.password))
+    ) {
+      throw new HttpError(403, 'invalid_credentials', 'Password is wrong.');
+    }
+    await setEmailEnabled(tenant.db, user.id, false);
+    await journal(request, { userId: user.id, kind: 'mfa_email_disabled', details: {} });
+    return { ok: true };
   });
 
   app.post('/auth/mfa/recovery/regenerate', async (request) => {

@@ -23,6 +23,7 @@ import { corsHeaders } from './headers.js';
 import { createRateLimiter, takeToken } from './rate-limit.js';
 import { createTenantDirectory, tenantFromHost, type TenantDirectory } from './tenants.js';
 import { verifySecondFactor } from './mfa.js';
+import { issueEmailCode, verifyEmailCode } from './mfa-email.js';
 import { base32Decode, hotp, totpStep } from './totp.js';
 
 /** The anti-CSRF header a browser client would send with this session cookie. */
@@ -763,6 +764,275 @@ describe('HTTP server', () => {
         body: { login: 'alice@acme.test', password: 'alice-pass' },
       });
       expect(plain.headers['set-cookie']).toBeDefined();
+    });
+
+    describe('codes by email', () => {
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 30));
+      async function withMail(requiredGroups: string[] = []) {
+        const mails: { login: string; code: string; host: string }[] = [];
+        const s = await prepare({
+          mfa: {
+            key,
+            requiredGroups,
+            sendCode: (message) => {
+              mails.push(message);
+              return Promise.resolve();
+            },
+          },
+        });
+        const lastCode = async () => {
+          await wait();
+          return (mails.at(-1) as { code: string }).code;
+        };
+        const verifyMail = (challenge: string, emailCode: string) =>
+          s.request('POST', '/auth/mfa/verify', { body: { challenge, emailCode } });
+        const send = (challenge: string) =>
+          s.request('POST', '/auth/mfa/email/send', { body: { challenge } });
+        return { ...s, mails, lastCode, verifyMail, send };
+      }
+
+      it('turns on with a first code, then signs in with a code sent by email', async () => {
+        const { request, signIn, db, mails, lastCode, attempt, verifyMail, send } =
+          await withMail();
+        const cookie = await signIn('alice@acme.test', 'alice-pass');
+        expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+          methods: { totp: false, email: false },
+          emailAvailable: true,
+        });
+        expect(
+          (await request('POST', '/auth/mfa/email/enable', { cookie, body: {} })).statusCode,
+        ).toBe(200);
+        const first = await lastCode();
+        expect(mails[0]).toMatchObject({ login: 'alice@acme.test', host: 'acme.erp.test' });
+        expect(first).toMatch(/^\d{6}$/);
+        // Not on yet, and the database holds a keyed hash, not the code.
+        expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+          methods: { email: false },
+        });
+        const stored = await sql<{
+          code_hash: string;
+        }>`select code_hash from socle_mfa_email_otp`.execute(db);
+        expect(stored.rows[0]?.code_hash).not.toContain(first);
+        const wrong = first === '000000' ? '111111' : '000000';
+        expect(
+          (await request('POST', '/auth/mfa/email/confirm', { cookie, body: { code: wrong } }))
+            .statusCode,
+        ).toBe(401);
+        expect(
+          (await request('POST', '/auth/mfa/email/confirm', { cookie, body: { code: first } }))
+            .statusCode,
+        ).toBe(200);
+        expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+          methods: { email: true },
+        });
+        expect(
+          (await request('POST', '/auth/mfa/email/enable', { cookie, body: {} })).statusCode,
+        ).toBe(409);
+
+        // Sign-in: a challenge, no session; the client asks for the code.
+        const login = await attempt('alice@acme.test');
+        expect(login.headers['set-cookie']).toBeUndefined();
+        const { mfa, methods, challenge } = login.json<{
+          mfa: string;
+          methods: string[];
+          challenge: string;
+        }>();
+        expect([mfa, methods]).toEqual(['verify', ['email']]);
+        expect((await send(challenge)).statusCode).toBe(200);
+        const code = await lastCode();
+        expect(mails).toHaveLength(2);
+        expect(
+          (await verifyMail(challenge, code === '000000' ? '111111' : '000000')).statusCode,
+        ).toBe(401);
+        const done = await verifyMail(challenge, code);
+        expect(done.statusCode).toBe(200);
+        expect(done.json()).toHaveProperty('csrfToken');
+        const session = String(done.headers['set-cookie']).split(';')[0] as string;
+        expect((await request('GET', '/sync/pull', { cookie: session })).statusCode).toBe(200);
+        // A code works once, even on a new challenge.
+        const again = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        expect((await verifyMail(again.challenge, code)).statusCode).toBe(401);
+        // At most one mail a minute: the second request sends nothing new.
+        await send(again.challenge);
+        await send(again.challenge);
+        await wait();
+        expect(mails).toHaveLength(3);
+        expect(await verifyAudit(db)).toMatchObject({ ok: true });
+      });
+
+      it('allows 5 tries and 10 minutes, and refuses a code for another method', async () => {
+        const { request, signIn, attempt, verifyMail, send, lastCode, db } = await withMail();
+        const cookie = await signIn('alice@acme.test', 'alice-pass');
+        await request('POST', '/auth/mfa/email/enable', { cookie, body: {} });
+        await request('POST', '/auth/mfa/email/confirm', {
+          cookie,
+          body: { code: await lastCode() },
+        });
+
+        const { challenge } = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        await send(challenge);
+        const code = await lastCode();
+        const bad = code === '000000' ? '111111' : '000000';
+        // The account has no authenticator app: a TOTP code or a recovery code opens nothing.
+        expect(
+          (await request('POST', '/auth/mfa/verify', { body: { challenge, code: '123456' } }))
+            .statusCode,
+        ).toBe(401);
+        expect(
+          (
+            await request('POST', '/auth/mfa/verify', {
+              body: { challenge, recovery: 'AAAA-AAAA-AAAA-AAAA' },
+            })
+          ).statusCode,
+        ).toBe(401);
+        const fresh = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        await send(fresh.challenge);
+        const second = await lastCode();
+        for (let i = 0; i < 5; i++)
+          expect((await verifyMail(fresh.challenge, bad)).statusCode).toBe(401);
+        // Five wrong tries kill the code: even the right one is refused now.
+        expect((await verifyMail(fresh.challenge, second)).statusCode).toBe(401);
+
+        // Expired after 10 minutes.
+        await sql`delete from socle_mfa_email_otp`.execute(db);
+        const third = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        await send(third.challenge);
+        const late = await lastCode();
+        await sql`update socle_mfa_email_otp set expires_at = now() - interval '1 second'`.execute(
+          db,
+        );
+        expect((await verifyMail(third.challenge, late)).statusCode).toBe(401);
+        // And a body naming two methods is invalid.
+        expect(
+          (
+            await request('POST', '/auth/mfa/verify', {
+              body: { challenge, code: '123456', emailCode: '123456' },
+            })
+          ).statusCode,
+        ).toBe(400);
+      });
+
+      it('counts its own five tries, apart from the challenge limit', async () => {
+        const { db } = await withMail();
+        const mfa = { key };
+        const code = (await issueEmailCode(db, mfa, 'alice')) as string;
+        const bad = code === '000000' ? '111111' : '000000';
+        for (let i = 0; i < 5; i++)
+          expect(await verifyEmailCode(db, mfa, 'alice', bad)).toBe(false);
+        expect(await verifyEmailCode(db, mfa, 'alice', code)).toBe(false);
+        // A new code (after the minute) starts again; a spent code cannot be used twice.
+        await sql`update socle_mfa_email_otp set sent_at = now() - interval '2 minutes'`.execute(
+          db,
+        );
+        const next = (await issueEmailCode(db, mfa, 'alice')) as string;
+        expect(await verifyEmailCode(db, mfa, 'alice', next)).toBe(true);
+        expect(await verifyEmailCode(db, mfa, 'alice', next)).toBe(false);
+        expect(await verifyEmailCode(db, mfa, 'alice', '12345')).toBe(false);
+      });
+
+      it('cannot be added to an account that has a factor by a sign-in challenge alone', async () => {
+        const { request, signIn, attempt, db, mails } = await withMail();
+        const cookie = await signIn('alice@acme.test', 'alice-pass');
+        const { secret } = (
+          await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })
+        ).json<{ secret: string }>();
+        await request('POST', '/auth/mfa/totp/confirm', { cookie, body: { code: codeOf(secret) } });
+        // Someone with the password and the mailbox, but not the authenticator app.
+        const { challenge } = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        const enable = await request('POST', '/auth/mfa/email/enable', { body: { challenge } });
+        expect([enable.statusCode, enable.json<{ error: string }>().error]).toEqual([
+          409,
+          'mfa_enrolled',
+        ]);
+        expect(mails).toHaveLength(0);
+        // Even with a code the mailbox really received, the method is not theirs to use.
+        const code = (await issueEmailCode(db, { key }, 'alice')) as string;
+        const confirm = await request('POST', '/auth/mfa/email/confirm', {
+          body: { challenge, code },
+        });
+        expect(confirm.statusCode).toBe(409);
+        const verify = await request('POST', '/auth/mfa/verify', {
+          body: { challenge, emailCode: code },
+        });
+        expect(verify.statusCode).toBe(401);
+      });
+
+      it('accepts a code once when several requests race with it', async () => {
+        const { request, signIn, db, lastCode } = await withMail();
+        const cookie = await signIn('alice@acme.test', 'alice-pass');
+        await request('POST', '/auth/mfa/email/enable', { cookie, body: {} });
+        const code = await lastCode();
+        const results = await Promise.all([
+          verifyEmailCode(db, { key }, 'alice', code),
+          verifyEmailCode(db, { key }, 'alice', code),
+          verifyEmailCode(db, { key }, 'alice', code),
+        ]);
+        expect(results.filter(Boolean)).toHaveLength(1);
+      });
+
+      it('offers it for enrolment to a role that requires a second factor, and keeps one factor', async () => {
+        const { request, attempt, mails, lastCode } = await withMail(['srv.group_manager']);
+        const first = await attempt('bob@acme.test');
+        const { mfa, methods, challenge } = first.json<{
+          mfa: string;
+          methods: string[];
+          challenge: string;
+        }>();
+        expect([mfa, methods]).toEqual(['enroll', ['totp', 'email']]);
+        expect(first.headers['set-cookie']).toBeUndefined();
+        await request('POST', '/auth/mfa/email/enable', { body: { challenge } });
+        expect(mails).toHaveLength(1);
+        expect(
+          (
+            await request('POST', '/auth/mfa/email/confirm', {
+              body: { challenge, code: '00000a' },
+            })
+          ).statusCode,
+        ).toBe(400);
+        const done = await request('POST', '/auth/mfa/email/confirm', {
+          body: { challenge, code: await lastCode() },
+        });
+        expect(done.statusCode).toBe(200);
+        const cookie = String(done.headers['set-cookie']).split(';')[0] as string;
+        expect((await request('GET', '/sync/pull', { cookie })).statusCode).toBe(200);
+        // Its only factor cannot be turned off.
+        const off = await request('POST', '/auth/mfa/email/disable', {
+          cookie,
+          body: { password: 'bob-pass' },
+        });
+        expect([off.statusCode, off.json<{ error: string }>().error]).toEqual([
+          403,
+          'mfa_required',
+        ]);
+      });
+
+      it('is not offered without a mail sender, and turning it off needs the password', async () => {
+        const plain = await prepare();
+        const cookie = await plain.signIn('alice@acme.test', 'alice-pass');
+        const refused = await plain.request('POST', '/auth/mfa/email/enable', { cookie, body: {} });
+        expect([refused.statusCode, refused.json<{ error: string }>().error]).toEqual([
+          409,
+          'email_unavailable',
+        ]);
+        expect((await plain.request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+          emailAvailable: false,
+        });
+
+        const { request, signIn, lastCode } = await withMail();
+        const session = await signIn('alice@acme.test', 'alice-pass');
+        await request('POST', '/auth/mfa/email/enable', { cookie: session, body: {} });
+        await request('POST', '/auth/mfa/email/confirm', {
+          cookie: session,
+          body: { code: await lastCode() },
+        });
+        const off = (password: string) =>
+          request('POST', '/auth/mfa/email/disable', { cookie: session, body: { password } });
+        expect((await off('wrong password')).statusCode).toBe(403);
+        expect((await off('alice-pass')).statusCode).toBe(200);
+        expect((await request('GET', '/auth/mfa', { cookie: session })).json()).toMatchObject({
+          methods: { email: false },
+        });
+      });
     });
 
     it('forces enrolment before any session for a role that requires it', async () => {

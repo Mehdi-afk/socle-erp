@@ -200,6 +200,14 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(a.challenge)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, attempts integer not null default 0)`.execute(
     trx,
   );
+  // Second factor by email: the user turns it on (`mfa_email`); one pending code at a time, kept
+  // as a keyed hash, with its expiry, its failed attempts and when it was sent.
+  await sql`alter table ${sql.table(a.user)} add column if not exists mfa_email boolean not null default false`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(a.emailOtp)} (user_id text primary key references ${sql.table(a.user)} (id) on delete cascade, code_hash text not null, expires_at timestamptz not null, attempts integer not null default 0, sent_at timestamptz not null)`.execute(
+    trx,
+  );
   // Password reset: one row per request, only the hash of the token is stored; used once.
   await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
     trx,
