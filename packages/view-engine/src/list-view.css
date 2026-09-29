@@ -1,0 +1,152 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/* The list is a white card; its rows are fixed-height so that scrolling can be virtual. */
+.ve-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink);
+}
+
+.ve-list-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 2rem;
+}
+
+.ve-list-count {
+  margin: 0;
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+.ve-list-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  font-weight: 500;
+}
+
+.ve-list-message {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  color: var(--color-danger-text);
+}
+
+.ve-grid[hidden] {
+  display: none;
+}
+
+/* The scrolling area: as tall as its container allows, the header sticks to its top. */
+.ve-scroll {
+  position: relative;
+  max-block-size: min(70vh, 40rem);
+  min-block-size: 8rem;
+  overflow: auto;
+}
+
+.ve-row {
+  display: grid;
+  grid-template-columns: var(--ve-columns);
+  align-items: center;
+  border-block-end: 1px solid var(--color-line);
+}
+
+.ve-row[data-index] {
+  cursor: pointer;
+}
+
+.ve-row[data-index]:hover {
+  background: var(--color-surface-sunken);
+}
+
+.ve-row[aria-selected='true'] {
+  background: var(--color-accent-soft);
+}
+
+.ve-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  block-size: var(--ve-row);
+  background: var(--color-surface);
+  cursor: default;
+}
+
+.ve-cell {
+  overflow: hidden;
+  padding-inline: var(--space-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Headers are quiet labels; numbers line up on their end side. */
+.ve-head .ve-cell {
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+.ve-cell[data-type='integer'],
+.ve-cell[data-type='decimal'],
+.ve-cell[data-type='monetary'] {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.ve-select {
+  display: flex;
+  justify-content: center;
+}
+
+.ve-sort {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ve-sort:hover {
+  color: var(--color-ink);
+}
+
+.ve-body {
+  position: relative;
+}
+
+.ve-window {
+  will-change: transform;
+}
+
+.ve-person {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ve-bar {
+  display: block;
+  block-size: 0.75rem;
+  inline-size: 70%;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+}
+
+.ve-cell a {
+  color: var(--color-link);
+}

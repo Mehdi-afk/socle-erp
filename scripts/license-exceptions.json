@@ -15,6 +15,10 @@
     "license": "Python-2.0",
     "reason": "Transitive dev-only dependency of stylelint (cosmiconfig → js-yaml), never shipped. The Python-2.0 (PSF) license is a permissive OSI-approved license without copyleft, compatible with LGPL and proprietary modules."
   },
+  "@types/react-dom": {
+    "license": "Unknown",
+    "reason": "Type declarations only (dev-only, never shipped). `pnpm licenses` reports it as Unknown, but the package declares MIT (`license` field of its package.json and LICENSE file of 19.3.0, checked on 2026-09-29)."
+  },
   "stylelint": {
     "license": "Unknown",
     "reason": "Dev-only CSS linter, never shipped. `pnpm licenses` reports it as Unknown, but the package declares MIT (`license` field of its package.json, LICENSE file, registry metadata: checked on 2026-09-29 for 17.15.0)."
