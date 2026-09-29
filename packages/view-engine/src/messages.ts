@@ -22,6 +22,13 @@ export interface Messages {
   readonly call: string;
   readonly writeTo: string;
   readonly openLink: string;
+  readonly confidentialTitle: string;
+  readonly masked: string;
+  readonly reveal: (label: string) => string;
+  readonly hide: (label: string) => string;
+  readonly revealError: string;
+  readonly notFound: string;
+  readonly sections: string;
 }
 
 const fr: Messages = {
@@ -44,6 +51,13 @@ const fr: Messages = {
   call: 'Appeler',
   writeTo: 'Écrire',
   openLink: 'Ouvrir le lien',
+  confidentialTitle: 'Données confidentielles',
+  masked: 'Masqué',
+  reveal: (label) => `Afficher : ${label}`,
+  hide: (label) => `Masquer : ${label}`,
+  revealError: 'Impossible d’afficher cette donnée.',
+  notFound: 'Cet enregistrement n’existe pas ou vous n’y avez pas accès.',
+  sections: 'Sections',
 };
 
 const en: Messages = {
@@ -66,6 +80,13 @@ const en: Messages = {
   call: 'Call',
   writeTo: 'Write',
   openLink: 'Open the link',
+  confidentialTitle: 'Confidential data',
+  masked: 'Hidden',
+  reveal: (label) => `Show: ${label}`,
+  hide: (label) => `Hide: ${label}`,
+  revealError: 'This data could not be shown.',
+  notFound: 'This record does not exist or you cannot access it.',
+  sections: 'Sections',
 };
 
 const ar: Messages = {
@@ -87,6 +108,13 @@ const ar: Messages = {
   call: 'اتصال',
   writeTo: 'مراسلة',
   openLink: 'فتح الرابط',
+  confidentialTitle: 'بيانات سرية',
+  masked: 'مخفي',
+  reveal: (label) => `إظهار: ${label}`,
+  hide: (label) => `إخفاء: ${label}`,
+  revealError: 'تعذّر إظهار هذه البيانات.',
+  notFound: 'هذا السجل غير موجود أو لا يمكنك الوصول إليه.',
+  sections: 'الأقسام',
 };
 
 const TABLE: Readonly<Record<string, Messages>> = { fr, en, ar };

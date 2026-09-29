@@ -9,6 +9,18 @@ export { ViewEngineProvider, useMessages, useViewContext } from './context.js';
 export type { ViewEngineProviderProps } from './context.js';
 export { FieldValue } from './field-value.js';
 export type { FieldValueProps, Widget } from './field-value.js';
+export { layoutOf } from './form-model.js';
+export type {
+  FormAction,
+  FormBlock,
+  FormField,
+  FormHeader,
+  FormLayout,
+  FormPage,
+  FormRelation,
+} from './form-model.js';
+export { FormView } from './form-view.js';
+export type { FormViewProps } from './form-view.js';
 export { formatValue, minorToDecimal } from './format.js';
 export type { Currency, FormatContext, FormatExtras } from './format.js';
 export { emailHref, phoneHref, webHref } from './links.js';

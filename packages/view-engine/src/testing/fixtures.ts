@@ -3,13 +3,16 @@
 // Models and records for the tests of the engine: a contact, its country and a currency, shaped like
 // the models of the `base` module but declared here, so that the engine is tested on its own.
 import {
+  button,
   buildModelRegistry,
   defineModel,
   f,
   form,
   group,
   field,
+  header,
   list,
+  node,
   notebook,
   page,
   type ModelRegistry,
@@ -42,6 +45,8 @@ const partner = defineModel({
     email: f.char({ label: { fr: 'E-mail', en: 'Email', ar: 'البريد' } }),
     phone: f.char({ label: { fr: 'Téléphone', en: 'Phone', ar: 'الهاتف' } }),
     website: f.char(),
+    parentId: f.many2one('res.partner'),
+    childIds: f.one2many('res.partner', 'parentId', { label: { fr: 'Contacts', en: 'Contacts' } }),
     city: f.char({ label: { fr: 'Ville', en: 'City', ar: 'المدينة' } }),
     countryId: f.many2one('res.country', { label: { fr: 'Pays', en: 'Country', ar: 'البلد' } }),
     currencyId: f.many2one('res.currency'),
@@ -88,6 +93,30 @@ export const formArch = form([
   ]),
 ]);
 
+/** A contact card the way ase will declare it: header, main group, confidential data, tabs. */
+export const contactForm = form([
+  header({ title: 'name', subtitle: 'email', avatar: 'name' }, [
+    button('archive', { label: { fr: 'Archiver', en: 'Archive' } }),
+    button('sendMail', { label: { fr: 'Écrire', en: 'Write' }, primary: true }),
+  ]),
+  group({ name: 'main', label: { fr: 'Identité', en: 'Identity' } }, [
+    field('kind', { widget: 'status_badge', tones: { company: 'info' } }),
+    field('phone', { widget: 'phone' }),
+    field('website', { widget: 'url' }),
+    field('revenue'),
+    field('vat'),
+  ]),
+  notebook([
+    page('address', { fr: 'Adresse', en: 'Address' }, [group([field('city'), field('countryId')])]),
+    page('contacts', { fr: 'Contacts', en: 'Contacts' }, [
+      node('field', { name: 'childIds' }, [
+        list([field('name'), field('email', { widget: 'email' })]),
+      ]),
+    ]),
+    page('notes', { fr: 'Notes', en: 'Notes' }, [field('notes')]),
+  ]),
+]);
+
 const COUNTRIES: RecordValues[] = [
   { id: 'c-dz', name: 'Algérie', code: 'DZ' },
   { id: 'c-fr', name: 'France', code: 'FR' },
@@ -128,7 +157,9 @@ export function contacts(count: number): RecordValues[] {
     subscribed: index % 2 === 0,
     lastContact: '2026-03-01T09:30:00.000Z',
     vat: `000${String(index).padStart(9, '0')}`,
-    notes: null,
+    website: index % 4 === 0 ? `https://company${String(index)}.example.test` : null,
+    parentId: index % 4 === 0 ? null : `p-${String(index - (index % 4))}`,
+    notes: index === 0 ? 'First line\nSecond line' : null,
     displayLabel: null,
   }));
 }
