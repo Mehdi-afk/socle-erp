@@ -11,3 +11,6 @@ coverage/
 
 # Third-party builds downloaded by spikes (never committed)
 spikes/**/builds/
+
+# Generated from the design tokens (packages/ui/src/css.ts); a test checks it is up to date
+packages/ui/src/tokens.css
