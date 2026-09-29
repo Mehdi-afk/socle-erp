@@ -200,6 +200,9 @@ importers:
       fastify:
         specifier: ^5.12.5
         version: 5.12.5
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
       kysely:
         specifier: ^0.29.6
         version: 0.29.6
@@ -1217,6 +1220,9 @@ packages:
 
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   json-schema-ref-resolver@3.0.0:
     resolution: {integrity: sha512-hOrZIVL5jyYFjzk7+y7n5JDzGlU8rfWDuYyHwGa2WA8/pcmMHezp2xsVwxrebD/Q9t8Nc5DboieySDpCp4WG4A==}
@@ -2695,6 +2701,8 @@ snapshots:
   isexe@2.0.0: {}
 
   jju@1.4.0: {}
+
+  jose@6.2.12: {}
 
   json-schema-ref-resolver@3.0.0:
     dependencies:

@@ -219,6 +219,15 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(a.ceremony)} (token_hash text primary key, challenge text not null, purpose text not null, user_id text references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null)`.execute(
     trx,
   );
+  // Single sign-on (OIDC). A flow is one sign-in in progress: `state` and the browser cookie are
+  // kept as hashes, the PKCE verifier and nonce are needed to finish it; single use, 10 minutes.
+  // An identity links an account of an identity provider (its stable `sub`) to a user.
+  await sql`create table if not exists ${sql.table(a.oidcFlow)} (state_hash text primary key, browser_hash text not null, provider text not null, nonce text not null, code_verifier text not null, expires_at timestamptz not null)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(a.oidcIdentity)} (provider text not null, sub text not null, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, email text, linked_at timestamptz not null default now(), primary key (provider, sub))`.execute(
+    trx,
+  );
   // Password reset: one row per request, only the hash of the token is stored; used once.
   await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
     trx,

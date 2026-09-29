@@ -45,6 +45,8 @@ export const AUTH_TABLES = {
   emailOtp: 'socle_mfa_email_otp',
   passkey: 'socle_passkey',
   ceremony: 'socle_webauthn_ceremony',
+  oidcFlow: 'socle_oidc_flow',
+  oidcIdentity: 'socle_oidc_identity',
 } as const;
 
 /**
