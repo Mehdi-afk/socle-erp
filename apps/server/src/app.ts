@@ -130,6 +130,8 @@ export interface ServerOptions {
    * step. The relying party is the tenant's own host.
    */
   readonly passkeys?: PasskeyOptions | undefined;
+  /** Active synchronising devices one user may have (default 20). */
+  readonly maxDevicesPerUser?: number | undefined;
   /**
    * Single sign-on with OpenID Connect providers (Google, Microsoft, any other). Each tenant's
    * redirect URI is https://<tenant host>/auth/oidc/callback.
@@ -687,7 +689,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
 
   // ─── synchronisation (§6.3) ──────────────────────────────────────────────────────────
   // ─── devices (registry, revocation, remote wipe) ─────────────────────────────────────
-  const MAX_DEVICES = 20;
+  const maxDevices = options.maxDevicesPerUser ?? 20;
 
   // Registers the calling device, or — for a known device of the same user with the same key —
   // ties the new session to it (signing in again on the same phone).
@@ -709,7 +711,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       return { ok: true };
     }
     const active = (await listDevices(tenant.db, user.id)).filter((d) => d.status === 'active');
-    if (active.length >= MAX_DEVICES) {
+    if (active.length >= maxDevices) {
       throw new HttpError(409, 'too_many_devices', 'Too many devices: revoke one first.');
     }
     try {

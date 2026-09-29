@@ -188,6 +188,8 @@ export function testServer(tenantsByName: Readonly<Record<string, InstalledTenan
     logger: false,
     session: { idleMs: 3_600_000, absoluteMs: 86_400_000, maxFailures: 5, cost: FAST },
     rateLimit: { capacity: 1_000_000, refillPerSecond: 1_000_000 },
+    // The property tests register a new simulated device on every case.
+    maxDevicesPerUser: 100_000,
   });
   const inject = (
     host: string,
@@ -236,6 +238,8 @@ export async function createTenant(pgUrl: string): Promise<Tenant> {
     logger: false,
     session: { idleMs: 3_600_000, absoluteMs: 86_400_000, maxFailures: 5, cost: FAST },
     rateLimit: { capacity: 1_000_000, refillPerSecond: 1_000_000 },
+    // The property tests register a new simulated device on every case.
+    maxDevicesPerUser: 100_000,
   });
   const request = async (method: 'GET' | 'POST', url: string, cookie?: string, body?: unknown) => {
     const response = await app.inject({
