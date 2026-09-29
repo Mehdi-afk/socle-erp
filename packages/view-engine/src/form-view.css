@@ -1,0 +1,79 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/* The form is a stack of cards under a header; nothing here depends on the model. */
+.ve-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  color: var(--color-ink);
+}
+
+.ve-form-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.ve-form-heading {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+.ve-form-title {
+  margin: 0;
+  font-size: var(--font-title-size);
+  font-weight: var(--font-title-weight);
+  overflow-wrap: anywhere;
+}
+
+.ve-form-subtitle {
+  margin: 0;
+  color: var(--color-label);
+  font-size: var(--font-body-size);
+}
+
+.ve-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Groups that hold several cards sit side by side when there is room. */
+.ve-form-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.ve-form-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-block-start: var(--space-4);
+}
+
+.ve-form-value {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* The list inside a card: the card already gives the frame. */
+.ve-form-embedded .ve-list {
+  padding: 0;
+  box-shadow: none;
+}
+
+.ve-secret {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ve-secret-error {
+  color: var(--color-danger-text);
+  font-size: var(--font-small-size);
+}
