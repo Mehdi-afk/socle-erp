@@ -361,6 +361,24 @@ export async function revokeSession(
   return done.rows.length > 0;
 }
 
+/** Ties a session to the synchronising device it serves (see {@link revokeDeviceSessions}). */
+export async function attachSessionToDevice(
+  db: Executor,
+  token: string,
+  deviceId: string,
+): Promise<void> {
+  await sql`update ${sql.table(T.session)} set device_id = ${deviceId} where token_hash = ${tokenHash(token)} and not revoked`.execute(
+    db,
+  );
+}
+
+/** Cuts every session of a device (its owner revoked it): nothing it holds still opens the API. */
+export async function revokeDeviceSessions(db: Executor, deviceId: string): Promise<void> {
+  await sql`update ${sql.table(T.session)} set revoked = true where device_id = ${deviceId}`.execute(
+    db,
+  );
+}
+
 /**
  * Replaces the token of a session by a fresh one (same user, same absolute expiry): done when
  * privileges change (password change, second factor), so that a token seen before cannot be
@@ -374,7 +392,7 @@ export async function rotateSession(
 ): Promise<string | undefined> {
   const fresh = randomBytes(32).toString('base64url');
   const done =
-    await sql`with old as (update ${sql.table(T.session)} set revoked = true where token_hash = ${tokenHash(token)} and not revoked and expires_at > ${now.toISOString()}::timestamptz returning user_id, created_at, expires_at, ip, user_agent) insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent) select ${tokenHash(fresh)}, user_id, created_at, ${now.toISOString()}::timestamptz, expires_at, ip, user_agent from old returning token_hash`.execute(
+    await sql`with old as (update ${sql.table(T.session)} set revoked = true where token_hash = ${tokenHash(token)} and not revoked and expires_at > ${now.toISOString()}::timestamptz returning user_id, created_at, expires_at, ip, user_agent, device_id) insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent, device_id) select ${tokenHash(fresh)}, user_id, created_at, ${now.toISOString()}::timestamptz, expires_at, ip, user_agent, device_id from old returning token_hash`.execute(
       db,
     );
   return done.rows.length > 0 ? fresh : undefined;

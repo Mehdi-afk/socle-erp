@@ -28,10 +28,13 @@ export {
 } from './outbox.js';
 export type { OutboxState, RejectedMutation } from './outbox.js';
 export {
+  DEVICE_STATUS_SKEW_MS,
   parseMutation,
   parsePullResponse,
   parsePushResults,
+  signDeviceStatus,
   signMutation,
+  verifyDeviceStatus,
   verifyMutation,
 } from './protocol.js';
 export type {

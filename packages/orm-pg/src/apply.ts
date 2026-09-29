@@ -168,6 +168,13 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(t.device)} (id text primary key, user_id text not null, public_key text not null, status text not null check (status in ('active', 'revoked')), registered_at timestamptz not null default now(), last_seen_at timestamptz)`.execute(
     trx,
   );
+  // What the owner sees in "my devices": a name, and when the device was revoked.
+  await sql`alter table ${sql.table(t.device)} add column if not exists name text, add column if not exists revoked_at timestamptz`.execute(
+    trx,
+  );
+  await sql`create index if not exists ${sql.id(`${t.device}_user_idx`)} on ${sql.table(t.device)} (user_id)`.execute(
+    trx,
+  );
   await sql`create table if not exists ${sql.table(t.mutation)} (mutation_id uuid primary key, device_id text not null, status text not null, conflict boolean not null, reason text not null, processed_at timestamptz not null default now())`.execute(
     trx,
   );
@@ -179,11 +186,13 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
     trx,
   );
   // Only a hash of the session token is stored: a database leak does not leak sessions.
+  // `device_id`: the synchronising device (if any) this session belongs to, so that revoking the
+  // device cuts its sessions.
   await sql`create table if not exists ${sql.table(a.session)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), expires_at timestamptz not null, revoked boolean not null default false)`.execute(
     trx,
   );
   // What the user sees in "my sessions": an id that is not the secret, where and with what.
-  await sql`alter table ${sql.table(a.session)} add column if not exists id uuid not null default gen_random_uuid(), add column if not exists ip text, add column if not exists user_agent text`.execute(
+  await sql`alter table ${sql.table(a.session)} add column if not exists id uuid not null default gen_random_uuid(), add column if not exists ip text, add column if not exists user_agent text, add column if not exists device_id text`.execute(
     trx,
   );
   await sql`create unique index if not exists ${sql.id(`${a.session}_id_idx`)} on ${sql.table(a.session)} (id)`.execute(
