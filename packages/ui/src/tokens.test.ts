@@ -221,7 +221,7 @@ describe('generated stylesheet', () => {
     expect(css).toContain('--duration-base: 0ms;');
     expect(css).toContain(":root[data-density='compact']");
     expect(css).toContain('--density-row: 32px;');
-    expect(css).toContain('@media (max-width: 819px)');
+    expect(css).toContain('@media (width < 820px)');
     expect(css).toContain(':lang(ar)');
   });
 

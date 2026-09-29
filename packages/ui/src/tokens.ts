@@ -148,8 +148,8 @@ export const themes: Readonly<Record<ThemeName, ThemeColors>> = Object.freeze({
 
 /** Everything that is not a colour: type, shape, spacing, motion, density. */
 export const scale = Object.freeze({
-  fontSans: "'Inter Variable', 'Noto Sans Arabic', system-ui, sans-serif",
-  fontArabic: "'Noto Sans Arabic', 'Inter Variable', system-ui, sans-serif",
+  fontSans: "'Inter Variable', 'Noto Sans Arabic Variable', system-ui, sans-serif",
+  fontArabic: "'Noto Sans Arabic Variable', 'Inter Variable', system-ui, sans-serif",
   titleSize: '1.875rem',
   titleWeight: '400',
   headingSize: '1.25rem',

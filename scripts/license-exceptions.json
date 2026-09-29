@@ -2,5 +2,29 @@
   "minimatch": {
     "license": "BlueOak-1.0.0",
     "reason": "Transitive dev-only dependency of eslint/typescript-eslint, never shipped. BlueOak-1.0.0 is a permissive OSI-approved license (no copyleft), compatible with LGPL and proprietary modules."
+  },
+  "lru-cache": {
+    "license": "BlueOak-1.0.0",
+    "reason": "Transitive dev-only dependency of jsdom (test environment of the web client), never shipped. BlueOak-1.0.0 is a permissive OSI-approved license (no copyleft), compatible with LGPL and proprietary modules."
+  },
+  "mdn-data": {
+    "license": "CC0-1.0",
+    "reason": "Transitive dev-only dependency of jsdom (CSS syntax data), never shipped. CC0-1.0 is a public-domain dedication: no obligation at all."
+  },
+  "argparse": {
+    "license": "Python-2.0",
+    "reason": "Transitive dev-only dependency of stylelint (cosmiconfig → js-yaml), never shipped. The Python-2.0 (PSF) license is a permissive OSI-approved license without copyleft, compatible with LGPL and proprietary modules."
+  },
+  "stylelint": {
+    "license": "Unknown",
+    "reason": "Dev-only CSS linter, never shipped. `pnpm licenses` reports it as Unknown, but the package declares MIT (`license` field of its package.json, LICENSE file, registry metadata: checked on 2026-09-29 for 17.15.0)."
+  },
+  "@fontsource-variable/inter": {
+    "license": "OFL-1.1",
+    "reason": "The Inter typeface (SIL Open Font License 1.1), self-hosted as woff2 files (ADR 015). The OFL allows using, bundling and redistributing the font files with software of any license; its copyleft applies only to modified versions of the font itself, which we do not make. Fonts are assets served next to the application, not code linked into it."
+  },
+  "@fontsource-variable/noto-sans-arabic": {
+    "license": "OFL-1.1",
+    "reason": "The Noto Sans Arabic typeface (SIL Open Font License 1.1), self-hosted as woff2 files (ADR 015). The OFL allows using, bundling and redistributing the font files with software of any license; its copyleft applies only to modified versions of the font itself, which we do not make. Fonts are assets served next to the application, not code linked into it."
   }
 }

@@ -12,6 +12,9 @@ pre-commit:
     lint:
       glob: '*.{ts,tsx,js,mjs,cjs}'
       run: pnpm exec eslint --max-warnings 0 {staged_files}
+    lint-css:
+      glob: '*.css'
+      run: pnpm exec stylelint --allow-empty-input {staged_files}
     format:
       glob: '*.{ts,tsx,js,mjs,cjs,json,yml,yaml}'
       run: pnpm exec prettier --check {staged_files}

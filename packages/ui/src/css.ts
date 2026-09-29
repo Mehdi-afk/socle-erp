@@ -38,6 +38,9 @@ ${colorLines('dark')}
 :root[data-theme='light'] {
   color-scheme: light;
 ${colorLines('light')}
+  --shadow-card:
+    0 1px 2px color-mix(in srgb, var(--color-ink) 6%, transparent),
+    0 8px 24px color-mix(in srgb, var(--color-ink) 6%, transparent);
 }
 
 :root {
@@ -62,16 +65,12 @@ ${spaces}
   --card-padding: ${scale.cardPadding};
 }
 
-:root[data-theme='light'] {
-  --shadow-card: 0 1px 2px rgb(27 27 29 / 6%), 0 8px 24px rgb(27 27 29 / 6%);
-}
-
 :root[data-density='compact'] {
   --density-row: ${scale.rowCompact};
   --card-padding: ${scale.cardPaddingCompact};
 }
 
-@media (max-width: 819px) {
+@media (width < ${scale.narrowBreakpoint}) {
   :root {
     --radius-card: ${scale.radiusCardNarrow};
   }
