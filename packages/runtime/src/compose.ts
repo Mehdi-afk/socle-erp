@@ -9,6 +9,7 @@ import {
   securityRecords,
   type ModelRegistry,
   type ModuleData,
+  type ModuleManifest,
   type SecurityPolicy,
 } from '@socle/framework';
 
@@ -17,6 +18,8 @@ import type { ModuleSet } from './loader.js';
 export interface Composition {
   readonly registry: ModelRegistry;
   readonly security: SecurityPolicy;
+  /** Manifests of the installed modules (their runtime capabilities). */
+  readonly manifests: ReadonlyMap<string, ModuleManifest>;
 }
 
 /**
@@ -37,7 +40,11 @@ export function compose(set: ModuleSet, modules: readonly string[]): Composition
     loaded.map((m) => m.views),
     registry,
   );
-  return { registry, security };
+  return {
+    registry,
+    security,
+    manifests: new Map(loaded.map((m) => [m.manifest.name, m.manifest])),
+  };
 }
 
 /**
