@@ -30,12 +30,13 @@ import {
   translateCommitError,
 } from '@socle/orm-pg';
 import { pullChanges, pushMutations, rightsFingerprint, type RunInTransaction } from '@socle/sync';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 
 import {
   authenticate,
   changePassword,
+  checkCredentials,
   CLEAR_SESSION_COOKIE,
   csrfMatches,
   csrfToken,
@@ -45,6 +46,7 @@ import {
   LoginError,
   loginOf,
   logout,
+  openSession,
   readSessionCookie,
   requestPasswordReset,
   resetPassword,
@@ -61,6 +63,13 @@ import {
   type PasswordPolicy,
 } from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
+import {
+  createChallenge,
+  mfaRequired,
+  mfaState,
+  registerMfaRoutes,
+  type MfaOptions,
+} from './mfa.js';
 import { HttpError } from './http-error.js';
 import { corsHeaders, SECURITY_HEADERS } from './headers.js';
 import { createRateLimiter, type BucketPolicy } from './rate-limit.js';
@@ -96,6 +105,12 @@ export interface ServerOptions {
   readonly logger?: boolean | undefined;
   /** File storage: the attachment endpoints exist only when it is configured. */
   readonly attachments?: AttachmentOptions | undefined;
+  /**
+   * Second factor (authenticator app). Without it, sign-in is password only. With it, accounts
+   * that have set up a second factor must use it, and the groups in `requiredGroups` (default
+   * administrators) cannot sign in without one.
+   */
+  readonly mfa?: MfaOptions | undefined;
 }
 
 const id = z.uuid();
@@ -234,8 +249,9 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // 2. Rate limit, per tenant and client address (stricter for logins).
   app.addHook('onRequest', async (request, reply) => {
     const key = `${request.headers.host ?? ''}|${request.ip}`;
-    const strict =
-      request.url.startsWith('/auth/login') || request.url.startsWith('/auth/password');
+    const strict = ['/auth/login', '/auth/password', '/auth/mfa'].some((prefix) =>
+      request.url.startsWith(prefix),
+    );
     const bucket = strict ? loginLimiter : limiter;
     const { allowed, retryAfterMs } = bucket.take(key);
     if (!allowed) {
@@ -264,7 +280,12 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   ]);
   app.addHook('preHandler', (request) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return Promise.resolve();
-    if (CSRF_EXEMPT.has(request.url.split('?')[0] ?? '')) return Promise.resolve();
+    const path = request.url.split('?')[0] ?? '';
+    if (CSRF_EXEMPT.has(path)) return Promise.resolve();
+    // A second-factor step made with a sign-in challenge (a secret only the browser that
+    // just typed the password holds) has no session token yet: the challenge is its proof.
+    const challenge = (request.body as { challenge?: unknown } | null | undefined)?.challenge;
+    if (path.startsWith('/auth/mfa/') && typeof challenge === 'string') return Promise.resolve();
     const token = readSessionCookie(request.headers.cookie);
     // Presence check only; the token is compared in constant time by csrfMatches.
     // eslint-disable-next-line security/detect-possible-timing-attacks
@@ -358,21 +379,58 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       );
 
   // ─── authentication ──────────────────────────────────────────────────────────────────
+  /** Opens the session once the user has proved who they are; the body the client receives. */
+  const finishLogin = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    userId: string,
+  ): Promise<Record<string, unknown>> => {
+    const { token } = await openSession(
+      tenantOf(request).db,
+      userId,
+      session,
+      new Date(),
+      request.ip,
+      request.headers['user-agent'],
+    );
+    await journal(request, { userId, kind: 'login', details: {} });
+    void reply.header('set-cookie', sessionCookie(token, session.absoluteMs));
+    return { ok: true, csrfToken: csrfToken(token) };
+  };
+
   app.post('/auth/login', async (request, reply) => {
     const body = loginBody.parse(request.body);
     try {
-      const { token, userId } = await login(
-        tenantOf(request).db,
+      const tenant = tenantOf(request);
+      const userId = await checkCredentials(
+        tenant.db,
         body.login,
         body.password,
         session,
         new Date(),
         request.ip,
-        request.headers['user-agent'],
       );
-      await journal(request, { userId, kind: 'login', details: {} });
-      void reply.header('set-cookie', sessionCookie(token, session.absoluteMs));
-      return { ok: true, csrfToken: csrfToken(token) };
+      // With a second factor (or a role that requires one) there is no session yet, only a
+      // short-lived challenge to present with the code.
+      const mfa = options.mfa;
+      if (mfa) {
+        const state = await mfaState(tenant.db, userId);
+        if (state === 'enrolled') {
+          return {
+            ok: true,
+            mfa: 'verify',
+            challenge: await createChallenge(tenant.db, userId),
+          };
+        }
+        if (await mfaRequired(tenant.db, tenant.security, mfa, userId)) {
+          return {
+            ok: true,
+            mfa: 'enroll',
+            challenge: await createChallenge(tenant.db, userId),
+          };
+        }
+      }
+      return await finishLogin(request, reply, userId);
     } catch (error) {
       if (error instanceof LoginError) {
         // The attempted login, truncated: who was targeted, never the password.
@@ -528,6 +586,10 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   );
 
   // ─── attachments ─────────────────────────────────────────────────────────────────────
+  if (options.mfa) {
+    registerMfaRoutes(app, { options: options.mfa, tenantOf, userOf, journal, finishLogin });
+  }
+
   if (options.attachments) {
     registerAttachmentRoutes(app, { tenantOf, userOf, runner }, options.attachments);
   }

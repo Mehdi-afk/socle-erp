@@ -39,6 +39,9 @@ export const AUTH_TABLES = {
   session: 'socle_session',
   passwordReset: 'socle_password_reset',
   loginIp: 'socle_login_ip',
+  totp: 'socle_mfa_totp',
+  recovery: 'socle_mfa_recovery',
+  challenge: 'socle_mfa_challenge',
 } as const;
 
 /**

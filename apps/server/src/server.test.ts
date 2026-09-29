@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { exportPublicKey, generateSigningKeyPair, uuidv7 } from '@socle/crypto';
 import { buildModelRegistry, buildSecurityPolicy, defineModel, f } from '@socle/framework';
@@ -22,6 +22,8 @@ import {
 import { corsHeaders } from './headers.js';
 import { createRateLimiter, takeToken } from './rate-limit.js';
 import { createTenantDirectory, tenantFromHost, type TenantDirectory } from './tenants.js';
+import { verifySecondFactor } from './mfa.js';
+import { base32Decode, hotp, totpStep } from './totp.js';
 
 /** The anti-CSRF header a browser client would send with this session cookie. */
 const csrfHeader = (cookie: string): Record<string, string> => {
@@ -526,6 +528,293 @@ describe('HTTP server', () => {
     );
     const after = await request('GET', '/auth/sessions', { cookie: renewed });
     expect(after.json<{ sessions: unknown[] }>().sessions).toHaveLength(1);
+  });
+
+  describe('second factor', () => {
+    const key = Uint8Array.from(randomBytes(32));
+    const options = (requiredGroups: string[] = []) => ({
+      passwordPolicy: { minLength: 12 },
+      loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+      mfa: { key, issuer: 'Test ERP', requiredGroups },
+    });
+    const now = () => totpStep(new Date());
+    const codeOf = (secret: string, drift = 0) =>
+      hotp(base32Decode(secret) as Uint8Array, now() + drift);
+
+    async function prepare(overrides: Partial<ServerOptions> = {}) {
+      const s = await server({ ...options(), ...overrides });
+      const password = (login: string) => (login.startsWith('alice') ? 'alice-pass' : 'bob-pass');
+      const attempt = (login: string) =>
+        s.request('POST', '/auth/login', { body: { login, password: password(login) } });
+      // A TOTP code works once per 30-second step: tests that sign in again forget the step.
+      const forgetStep = () => sql`update socle_mfa_totp set last_step = 0`.execute(s.db);
+      return { ...s, attempt, forgetStep };
+    }
+
+    it('enrols with an authenticator app, then asks for a code at sign-in', async () => {
+      const { request, signIn, db, attempt, forgetStep } = await prepare();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+        state: 'none',
+        required: false,
+      });
+
+      const setup = await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} });
+      const { secret, uri } = setup.json<{ secret: string; uri: string }>();
+      expect(uri).toContain('otpauth://totp/Test%20ERP:alice%40acme.test');
+      expect(uri).toContain(`secret=${secret}`);
+      // The database never holds the secret in clear.
+      const stored = await sql<{
+        secret_enc: string;
+      }>`select secret_enc from socle_mfa_totp`.execute(db);
+      expect(stored.rows[0]?.secret_enc).not.toContain(secret);
+      expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+        state: 'pending',
+      });
+
+      const wrong = await request('POST', '/auth/mfa/totp/confirm', {
+        cookie,
+        body: { code: codeOf(secret, 0) === '000000' ? '111111' : '000000' },
+      });
+      expect(wrong.statusCode).toBe(401);
+      const confirmed = await request('POST', '/auth/mfa/totp/confirm', {
+        cookie,
+        body: { code: codeOf(secret) },
+      });
+      const { recoveryCodes } = confirmed.json<{ recoveryCodes: string[] }>();
+      expect(recoveryCodes).toHaveLength(10);
+      expect(new Set(recoveryCodes).size).toBe(10);
+      for (const code of recoveryCodes) {
+        expect(code.split('-')).toHaveLength(4);
+        expect(code).toMatch(/^[A-Z2-7-]{19}$/);
+      }
+      const hashes = await sql<{
+        code_hash: string;
+      }>`select code_hash from socle_mfa_recovery`.execute(db);
+      expect(hashes.rows).toHaveLength(10);
+      expect(hashes.rows.map((row) => row.code_hash)).not.toContain(recoveryCodes[0]);
+      expect((await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })).statusCode).toBe(
+        409,
+      );
+
+      // Sign-in now stops at a challenge: no session, no cookie.
+      await forgetStep();
+      const first = await attempt('alice@acme.test');
+      expect(first.headers['set-cookie']).toBeUndefined();
+      const { mfa, challenge } = first.json<{ mfa: string; challenge: string }>();
+      expect(mfa).toBe('verify');
+      const verify = (body: Record<string, unknown>) =>
+        request('POST', '/auth/mfa/verify', { body: { challenge, ...body } });
+      expect((await verify({ code: '000000' })).statusCode).toBe(401);
+      const done = await verify({ code: codeOf(secret) });
+      expect(done.statusCode).toBe(200);
+      const fresh = String(done.headers['set-cookie']).split(';')[0] as string;
+      expect(done.json()).toHaveProperty('csrfToken');
+      expect((await request('GET', '/sync/pull', { cookie: fresh })).statusCode).toBe(200);
+      // A challenge is spent by success; the same code cannot be replayed in a new sign-in.
+      expect((await verify({ code: codeOf(secret) })).statusCode).toBe(401);
+      const again = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+      const replay = await request('POST', '/auth/mfa/verify', {
+        body: { challenge: again.challenge, code: codeOf(secret) },
+      });
+      expect(replay.statusCode).toBe(401);
+      // …but the next step's code is fine (one step of drift is allowed).
+      expect(
+        (
+          await request('POST', '/auth/mfa/verify', {
+            body: { challenge: again.challenge, code: codeOf(secret, 1) },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+
+    it('accepts a code once even when two requests race with it', async () => {
+      const { request, signIn, db, forgetStep } = await prepare();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const { secret } = (
+        await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })
+      ).json<{ secret: string }>();
+      await request('POST', '/auth/mfa/totp/confirm', { cookie, body: { code: codeOf(secret) } });
+      await forgetStep();
+      const code = codeOf(secret);
+      const mfa = { key };
+      const results = await Promise.all([
+        verifySecondFactor(db, mfa, 'alice', { code }),
+        verifySecondFactor(db, mfa, 'alice', { code }),
+        verifySecondFactor(db, mfa, 'alice', { code }),
+      ]);
+      expect(results.filter((kind) => kind === 'totp')).toHaveLength(1);
+    });
+
+    it('limits the attempts of a challenge and lets it expire', async () => {
+      const { request, signIn, attempt, forgetStep, db } = await prepare();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const { secret } = (
+        await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })
+      ).json<{ secret: string }>();
+      await request('POST', '/auth/mfa/totp/confirm', { cookie, body: { code: codeOf(secret) } });
+      await forgetStep();
+
+      const { challenge } = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+      for (let i = 0; i < 5; i++) {
+        const bad = await request('POST', '/auth/mfa/verify', {
+          body: { challenge, code: '000000' },
+        });
+        expect(bad.statusCode).toBe(401);
+      }
+      // Exhausted: even the right code is refused now, with the same answer.
+      const late = await request('POST', '/auth/mfa/verify', {
+        body: { challenge, code: codeOf(secret) },
+      });
+      expect([late.statusCode, late.json<{ error: string }>().error]).toEqual([
+        401,
+        'invalid_code',
+      ]);
+
+      const second = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+      await sql`update socle_mfa_challenge set expires_at = now() - interval '1 second'`.execute(
+        db,
+      );
+      const expired = await request('POST', '/auth/mfa/verify', {
+        body: { challenge: second.challenge, code: codeOf(secret) },
+      });
+      expect(expired.statusCode).toBe(401);
+      expect(
+        (
+          await request('POST', '/auth/mfa/verify', {
+            body: { challenge: 'x'.repeat(43), code: '123456' },
+          })
+        ).statusCode,
+      ).toBe(401);
+    });
+
+    it('lets a recovery code in once, and only the authenticator makes new ones', async () => {
+      const { request, signIn, attempt, forgetStep } = await prepare();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const { secret } = (
+        await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })
+      ).json<{ secret: string }>();
+      const { recoveryCodes } = (
+        await request('POST', '/auth/mfa/totp/confirm', { cookie, body: { code: codeOf(secret) } })
+      ).json<{ recoveryCodes: string[] }>();
+      const recovery = recoveryCodes[0] as string;
+
+      const viaRecovery = async (code: string) => {
+        const { challenge } = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+        return request('POST', '/auth/mfa/verify', { body: { challenge, recovery: code } });
+      };
+      // Written in lower case and without dashes: still the same code.
+      expect((await viaRecovery(recovery.replaceAll('-', '').toLowerCase())).statusCode).toBe(200);
+      expect((await viaRecovery(recovery)).statusCode).toBe(401);
+      expect((await viaRecovery('AAAA-AAAA-AAAA-AAAA')).statusCode).toBe(401);
+
+      const session = await signIn2(request, attempt, recoveryCodes[1] as string);
+      const left = await request('GET', '/auth/mfa', { cookie: session });
+      expect(left.json()).toMatchObject({ recoveryCodesLeft: 8 });
+      await forgetStep();
+      const regenerated = await request('POST', '/auth/mfa/recovery/regenerate', {
+        cookie: session,
+        body: { code: codeOf(secret) },
+      });
+      const fresh = regenerated.json<{ recoveryCodes: string[] }>().recoveryCodes;
+      expect(fresh).toHaveLength(10);
+      // The old codes are gone.
+      expect((await viaRecovery(recoveryCodes[2] as string)).statusCode).toBe(401);
+      expect((await viaRecovery(fresh[0] as string)).statusCode).toBe(200);
+      expect(
+        (
+          await request('POST', '/auth/mfa/recovery/regenerate', {
+            cookie: session,
+            body: { code: '000000' },
+          })
+        ).statusCode,
+      ).toBe(401);
+    });
+
+    async function signIn2(
+      request: Awaited<ReturnType<typeof prepare>>['request'],
+      attempt: (login: string) => ReturnType<Awaited<ReturnType<typeof prepare>>['request']>,
+      recovery: string,
+    ): Promise<string> {
+      const { challenge } = (await attempt('alice@acme.test')).json<{ challenge: string }>();
+      const done = await request('POST', '/auth/mfa/verify', { body: { challenge, recovery } });
+      return String(done.headers['set-cookie']).split(';')[0] as string;
+    }
+
+    it('turns the second factor off only with the password and a code, never for a required role', async () => {
+      const { request, signIn, forgetStep } = await prepare();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const { secret } = (
+        await request('POST', '/auth/mfa/totp/setup', { cookie, body: {} })
+      ).json<{ secret: string }>();
+      await request('POST', '/auth/mfa/totp/confirm', { cookie, body: { code: codeOf(secret) } });
+      await forgetStep();
+      const disable = (password: string, code: string) =>
+        request('POST', '/auth/mfa/totp/disable', { cookie, body: { password, code } });
+      expect((await disable('wrong password', codeOf(secret))).statusCode).toBe(403);
+      expect((await disable('alice-pass', '000000')).statusCode).toBe(403);
+      expect((await disable('alice-pass', codeOf(secret))).statusCode).toBe(200);
+      expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+        state: 'none',
+      });
+      // Back to a password-only sign-in.
+      const plain = await request('POST', '/auth/login', {
+        body: { login: 'alice@acme.test', password: 'alice-pass' },
+      });
+      expect(plain.headers['set-cookie']).toBeDefined();
+    });
+
+    it('forces enrolment before any session for a role that requires it', async () => {
+      const { request, attempt, db } = await prepare(options(['srv.group_manager']));
+      const first = await attempt('bob@acme.test');
+      expect(first.headers['set-cookie']).toBeUndefined();
+      const { mfa, challenge } = first.json<{ mfa: string; challenge: string }>();
+      expect(mfa).toBe('enroll');
+
+      // The challenge opens nothing but the enrolment; a stale cookie in the way does not matter.
+      const stale = { cookie: `__Host-socle_session=${'a'.repeat(43)}` };
+      expect((await request('GET', '/sync/pull', stale)).statusCode).toBe(401);
+      expect(
+        (await request('POST', '/auth/mfa/verify', { body: { challenge, code: '123456' } }))
+          .statusCode,
+      ).toBe(401);
+      const setup = await request('POST', '/auth/mfa/totp/setup', {
+        ...stale,
+        body: { challenge },
+      });
+      const { secret } = setup.json<{ secret: string }>();
+      expect(
+        (await request('POST', '/auth/mfa/totp/confirm', { body: { challenge, code: '000000' } }))
+          .statusCode,
+      ).toBe(401);
+      const done = await request('POST', '/auth/mfa/totp/confirm', {
+        body: { challenge, code: codeOf(secret) },
+      });
+      expect(done.statusCode).toBe(200);
+      expect(done.json<{ recoveryCodes: string[] }>().recoveryCodes).toHaveLength(10);
+      const cookie = String(done.headers['set-cookie']).split(';')[0] as string;
+      expect((await request('GET', '/sync/pull', { cookie })).statusCode).toBe(200);
+      expect((await request('GET', '/auth/mfa', { cookie })).json()).toMatchObject({
+        state: 'enrolled',
+        required: true,
+      });
+
+      // Required: cannot be turned off.
+      await sql`update socle_mfa_totp set last_step = 0`.execute(db);
+      const off = await request('POST', '/auth/mfa/totp/disable', {
+        cookie,
+        body: { password: 'bob-pass', code: codeOf(secret) },
+      });
+      expect([off.statusCode, off.json<{ error: string }>().error]).toEqual([403, 'mfa_required']);
+      // A user outside the required group keeps signing in with the password alone.
+      expect((await attempt('alice@acme.test')).headers['set-cookie']).toBeDefined();
+      const kinds = await sql<{ kind: string }>`select distinct kind from socle_audit`.execute(db);
+      expect(kinds.rows.map((row) => row.kind)).toEqual(
+        expect.arrayContaining(['mfa_enabled', 'login']),
+      );
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
   });
 
   it('consumes a reset token atomically: of two simultaneous uses only one wins', async () => {

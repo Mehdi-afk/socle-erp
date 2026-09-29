@@ -14,7 +14,8 @@
   },
   "devDependencies": {
     "@socle/testing": "workspace:*",
-    "@types/node": "^24.13.6"
+    "@types/node": "^24.13.6",
+    "fast-check": "^4.10.2"
   },
   "dependencies": {
     "@socle/crypto": "workspace:*",
