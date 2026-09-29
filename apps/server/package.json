@@ -20,6 +20,7 @@
     "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
     "@socle/orm-pg": "workspace:*",
+    "@socle/runtime": "workspace:*",
     "@socle/sync": "workspace:*",
     "fastify": "^5.12.5",
     "kysely": "^0.29.6",

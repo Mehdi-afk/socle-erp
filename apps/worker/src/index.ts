@@ -1,4 +1,3 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-
-/** Placeholder until phase 1. */
-export const PACKAGE_NAME = '@socle/worker';
+export { scanPendingAttachments } from './scan.js';
+export type { ScanOptions, ScanReport } from './scan.js';

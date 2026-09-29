@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 export { buildServer } from './app.js';
+export type { AttachmentOptions } from './attachments.js';
 export type { ServerOptions } from './app.js';
 export {
   authenticate,

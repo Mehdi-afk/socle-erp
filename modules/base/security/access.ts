@@ -29,4 +29,7 @@ export default [
   // Sequences: numbers are taken by business code (usually through sudo), set up by admins.
   { model: 'ir.sequence', group: 'base.group_user', ...read },
   { model: 'ir.sequence', group: 'base.group_system', ...all },
+  // Attachments: through the attachment endpoints only (rights of the target record); the
+  // administrators see them all.
+  { model: 'ir.attachment', group: 'base.group_system', ...all },
 ] satisfies AccessDefinition[];

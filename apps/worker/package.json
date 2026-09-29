@@ -2,7 +2,7 @@
   "name": "@socle/worker",
   "version": "0.0.0",
   "private": true,
-  "description": "Background jobs (pg-boss): PDF, emails, e-invoicing, imports",
+  "description": "Background jobs: antivirus scanning, scheduled tasks, emails, PDF",
   "license": "LGPL-3.0-only",
   "type": "module",
   "exports": {
@@ -14,5 +14,11 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.6"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*",
+    "@socle/orm-pg": "workspace:*",
+    "@socle/runtime": "workspace:*",
+    "kysely": "^0.29.6"
   }
 }
