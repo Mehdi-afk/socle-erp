@@ -99,13 +99,15 @@ describe('style guide', () => {
     render(<Guide />);
     const field = screen.getByRole('textbox', { name: 'Accent de la société' });
     await user.clear(field);
-    await user.type(field, '#F59E0B');
+    await user.click(field);
+    await user.paste('#F59E0B');
     expect(screen.getByText('Accent accepté')).toBeVisible();
     expect(root.style.getPropertyValue('--color-accent')).toBe('#F59E0B');
     expect(root.style.getPropertyValue('--color-on-accent')).toBe('#1B1B1D');
 
     await user.clear(field);
-    await user.type(field, '#777777');
+    await user.click(field);
+    await user.paste('#777777');
     expect(screen.getByText('Accent refusé')).toBeVisible();
     expect(screen.getByText(/is required/)).toBeVisible();
     // A refused accent is not applied: the page returns to the default.
