@@ -182,6 +182,13 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(a.session)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), expires_at timestamptz not null, revoked boolean not null default false)`.execute(
     trx,
   );
+  // What the user sees in "my sessions": an id that is not the secret, where and with what.
+  await sql`alter table ${sql.table(a.session)} add column if not exists id uuid not null default gen_random_uuid(), add column if not exists ip text, add column if not exists user_agent text`.execute(
+    trx,
+  );
+  await sql`create unique index if not exists ${sql.id(`${a.session}_id_idx`)} on ${sql.table(a.session)} (id)`.execute(
+    trx,
+  );
   // Password reset: one row per request, only the hash of the token is stored; used once.
   await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
     trx,

@@ -181,6 +181,7 @@ export async function login(
   policy: SessionPolicy = DEFAULT_SESSION_POLICY,
   now: Date = new Date(),
   ip?: string,
+  userAgent?: string,
 ): Promise<{ readonly token: string; readonly expiresAt: Date; readonly userId: string }> {
   // A locked address gets the generic answer after the same work, and does not touch the
   // account's own counter (an attacker must not lock a victim out from a locked address).
@@ -231,7 +232,7 @@ export async function login(
   }
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + policy.absoluteMs);
-  await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at) values (${tokenHash(token)}, ${user.id}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz)`.execute(
+  await sql`insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent) values (${tokenHash(token)}, ${user.id}, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${expiresAt.toISOString()}::timestamptz, ${ip ?? null}, ${userAgent?.slice(0, 300) ?? null})`.execute(
     db,
   );
   return { token, expiresAt, userId: user.id };
@@ -273,6 +274,95 @@ export async function authenticate(
     lang: row.lang,
     tz: row.tz,
   };
+}
+
+/** A session as its owner sees it (the id is not the secret token). */
+export interface SessionInfo {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly lastSeenAt: string;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+  /** The session making the request. */
+  readonly current: boolean;
+}
+
+/** The active sessions of a user (not revoked, not expired, not idle too long). */
+export async function listSessions(
+  db: Executor,
+  userId: string,
+  currentToken: string | undefined,
+  policy: SessionPolicy = DEFAULT_SESSION_POLICY,
+  now: Date = new Date(),
+): Promise<SessionInfo[]> {
+  const rows = await sql<{
+    id: string;
+    token_hash: string;
+    created_at: Date | string;
+    last_seen_at: Date | string;
+    ip: string | null;
+    user_agent: string | null;
+  }>`select id, token_hash, created_at, last_seen_at, ip, user_agent from ${sql.table(T.session)} where user_id = ${userId} and not revoked and expires_at > ${now.toISOString()}::timestamptz and last_seen_at > ${new Date(now.getTime() - policy.idleMs).toISOString()}::timestamptz order by last_seen_at desc`.execute(
+    db,
+  );
+  const mine = currentToken === undefined ? undefined : tokenHash(currentToken);
+  return rows.rows.map((row) => ({
+    id: row.id,
+    createdAt: new Date(row.created_at).toISOString(),
+    lastSeenAt: new Date(row.last_seen_at).toISOString(),
+    ip: row.ip,
+    userAgent: row.user_agent,
+    current: row.token_hash === mine,
+  }));
+}
+
+/** Revokes one of the user's own sessions by id; false when it is not theirs or not there. */
+export async function revokeSession(
+  db: Executor,
+  userId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const done =
+    await sql`update ${sql.table(T.session)} set revoked = true where id = ${sessionId}::uuid and user_id = ${userId} and not revoked returning id`.execute(
+      db,
+    );
+  return done.rows.length > 0;
+}
+
+/**
+ * Replaces the token of a session by a fresh one (same user, same absolute expiry): done when
+ * privileges change (password change, second factor), so that a token seen before cannot be
+ * used after. The old token stops working at once.
+ * @returns the new token, or undefined when the old one is not an active session
+ */
+export async function rotateSession(
+  db: Executor,
+  token: string,
+  now: Date = new Date(),
+): Promise<string | undefined> {
+  const fresh = randomBytes(32).toString('base64url');
+  const done =
+    await sql`with old as (update ${sql.table(T.session)} set revoked = true where token_hash = ${tokenHash(token)} and not revoked and expires_at > ${now.toISOString()}::timestamptz returning user_id, created_at, expires_at, ip, user_agent) insert into ${sql.table(T.session)} (token_hash, user_id, created_at, last_seen_at, expires_at, ip, user_agent) select ${tokenHash(fresh)}, user_id, created_at, ${now.toISOString()}::timestamptz, expires_at, ip, user_agent from old returning token_hash`.execute(
+      db,
+    );
+  return done.rows.length > 0 ? fresh : undefined;
+}
+
+/**
+ * The anti-CSRF token of a session: derived from the session secret, so that a page of another
+ * site (which cannot read the cookie) cannot compute it. The client keeps it in memory and
+ * sends it in `X-CSRF-Token` with every modifying request.
+ */
+export function csrfToken(sessionToken: string): string {
+  return createHash('sha256').update(`socle-csrf:${sessionToken}`).digest('base64url');
+}
+
+/** True when `given` is the anti-CSRF token of `sessionToken` (constant time). */
+export function csrfMatches(sessionToken: string, given: string | undefined): boolean {
+  if (given === undefined) return false;
+  const expected = Buffer.from(csrfToken(sessionToken));
+  const actual = Buffer.from(given);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 /** Revokes a session (logout, device lost). */

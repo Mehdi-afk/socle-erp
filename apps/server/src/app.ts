@@ -37,8 +37,11 @@ import {
   authenticate,
   changePassword,
   CLEAR_SESSION_COOKIE,
+  csrfMatches,
+  csrfToken,
   DEFAULT_SESSION_POLICY,
   login,
+  listSessions,
   LoginError,
   loginOf,
   logout,
@@ -46,6 +49,8 @@ import {
   requestPasswordReset,
   resetPassword,
   resetTokenLogin,
+  revokeSession,
+  rotateSession,
   sessionCookie,
   type SessionPolicy,
 } from './auth.js';
@@ -247,6 +252,36 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     request.tenant = tenant;
   });
 
+  // 4. CSRF, for every modifying request that carries a session cookie: the browser must say
+  // the request comes from an allowed site (`Origin` was checked in step 1 when present; a
+  // request declared cross-site without one is refused) and must send the session's own
+  // anti-CSRF token. Sign-in, and the reset flow before any session, have no token to send.
+  const CSRF_EXEMPT = new Set([
+    '/auth/login',
+    '/auth/logout',
+    '/auth/password/forgot',
+    '/auth/password/reset',
+  ]);
+  app.addHook('preHandler', (request) => {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return Promise.resolve();
+    if (CSRF_EXEMPT.has(request.url.split('?')[0] ?? '')) return Promise.resolve();
+    const token = readSessionCookie(request.headers.cookie);
+    // Presence check only; the token is compared in constant time by csrfMatches.
+    // eslint-disable-next-line security/detect-possible-timing-attacks
+    if (token === undefined) return Promise.resolve();
+    if (
+      request.headers['sec-fetch-site'] === 'cross-site' &&
+      request.headers.origin === undefined
+    ) {
+      throw new HttpError(403, 'csrf', 'Cross-site request refused.');
+    }
+    const given = request.headers['x-csrf-token'];
+    if (!csrfMatches(token, typeof given === 'string' ? given : undefined)) {
+      throw new HttpError(403, 'csrf', 'Missing or invalid anti-CSRF token.');
+    }
+    return Promise.resolve();
+  });
+
   app.setErrorHandler((error, request, reply) => {
     const answer = toHttp(error);
     if (answer.status >= 500) request.log.error({ err: error }, 'request failed');
@@ -333,10 +368,11 @@ export function buildServer(options: ServerOptions): FastifyInstance {
         session,
         new Date(),
         request.ip,
+        request.headers['user-agent'],
       );
       await journal(request, { userId, kind: 'login', details: {} });
       void reply.header('set-cookie', sessionCookie(token, session.absoluteMs));
-      return { ok: true };
+      return { ok: true, csrfToken: csrfToken(token) };
     } catch (error) {
       if (error instanceof LoginError) {
         // The attempted login, truncated: who was targeted, never the password.
@@ -349,6 +385,39 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       }
       throw error;
     }
+  });
+
+  // Who am I, and the anti-CSRF token of this session (the client keeps it in memory).
+  app.get('/auth/session', async (request) => {
+    const user = await userOf(request);
+    const token = readSessionCookie(request.headers.cookie) ?? '';
+    return { userId: user.id, csrfToken: csrfToken(token) };
+  });
+
+  app.get('/auth/sessions', async (request) => {
+    const user = await userOf(request);
+    return {
+      sessions: await listSessions(
+        tenantOf(request).db,
+        user.id,
+        readSessionCookie(request.headers.cookie),
+        session,
+      ),
+    };
+  });
+
+  app.delete<{ Params: { id: string } }>('/auth/sessions/:id', async (request) => {
+    const user = await userOf(request);
+    const sessionId = id.parse(request.params.id);
+    if (!(await revokeSession(tenantOf(request).db, user.id, sessionId))) {
+      throw new HttpError(404, 'not_found', 'Unknown session.');
+    }
+    await journal(request, {
+      userId: user.id,
+      kind: 'session_revoked',
+      details: { session: sessionId },
+    });
+    return { ok: true };
   });
 
   app.post('/auth/logout', async (request, reply) => {
@@ -366,7 +435,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     if (problem !== undefined) throw new HttpError(400, 'weak_password', problem);
   };
 
-  app.post('/auth/password/change', async (request) => {
+  app.post('/auth/password/change', async (request, reply) => {
     const body = changeBody.parse(request.body);
     const tenant = tenantOf(request);
     const user = await userOf(request);
@@ -387,7 +456,12 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       throw error;
     }
     await journal(request, { userId: user.id, kind: 'password_changed', details: {} });
-    return { ok: true };
+    // A new session token after the change: the one seen before is no longer valid.
+    const current = readSessionCookie(request.headers.cookie);
+    const fresh = current === undefined ? undefined : await rotateSession(tenant.db, current);
+    if (fresh === undefined) return { ok: true };
+    void reply.header('set-cookie', sessionCookie(fresh, session.absoluteMs));
+    return { ok: true, csrfToken: csrfToken(fresh) };
   });
 
   // Always the same answer, whether the account exists or not.
