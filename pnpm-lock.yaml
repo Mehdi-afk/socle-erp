@@ -462,6 +462,9 @@ importers:
       '@radix-ui/react-dialog':
         specifier: 1.1.23
         version: 1.1.23(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-direction':
+        specifier: 1.1.4
+        version: 1.1.4(@types/react@19.3.0)(react@19.3.0)
       '@radix-ui/react-dropdown-menu':
         specifier: 2.1.24
         version: 2.1.24(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -510,7 +513,7 @@ importers:
         version: 30.1.1
       stylelint:
         specifier: 17.15.0
-        version: 17.15.0
+        version: 17.15.0(supports-color@8.1.1)(typescript@6.0.3)
 
   packages/view-engine: {}
 

@@ -1,0 +1,43 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-segmented {
+  display: inline-flex;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+}
+
+.ui-segment {
+  cursor: pointer;
+}
+
+.ui-segment-label {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 32px;
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-label-size);
+  font-weight: 500;
+  transition: background-color var(--duration-fast);
+}
+
+/* The chosen segment is on the accent (a background, the text on it is computed). */
+.ui-segment input:checked + .ui-segment-label {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* The radio itself is hidden: its segment carries the double focus ring. */
+.ui-segment input:focus-visible + .ui-segment-label {
+  outline: 2px solid var(--color-focus-outer);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-focus-inner);
+}
+
+.ui-segment input:not(:checked) + .ui-segment-label:hover {
+  background: color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
