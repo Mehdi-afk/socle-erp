@@ -25,6 +25,7 @@
     "@socle/runtime": "workspace:*",
     "@socle/sync": "workspace:*",
     "fastify": "^5.12.5",
+    "jose": "6.2.12",
     "kysely": "^0.29.6",
     "zod": "^4.6.5"
   }

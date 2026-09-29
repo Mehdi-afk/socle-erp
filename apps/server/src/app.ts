@@ -63,6 +63,7 @@ import {
   type PasswordPolicy,
 } from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
+import { registerOidcRoutes, type OidcOptions } from './oidc.js';
 import { registerPasskeyRoutes, type PasskeyOptions } from './passkeys.js';
 import {
   createChallenge,
@@ -117,6 +118,11 @@ export interface ServerOptions {
    * step. The relying party is the tenant's own host.
    */
   readonly passkeys?: PasskeyOptions | undefined;
+  /**
+   * Single sign-on with OpenID Connect providers (Google, Microsoft, any other). Each tenant's
+   * redirect URI is https://<tenant host>/auth/oidc/callback.
+   */
+  readonly oidc?: OidcOptions | undefined;
 }
 
 const id = z.uuid();
@@ -255,9 +261,13 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // 2. Rate limit, per tenant and client address (stricter for logins).
   app.addHook('onRequest', async (request, reply) => {
     const key = `${request.headers.host ?? ''}|${request.ip}`;
-    const strict = ['/auth/login', '/auth/password', '/auth/mfa', '/auth/passkeys'].some((prefix) =>
-      request.url.startsWith(prefix),
-    );
+    const strict = [
+      '/auth/login',
+      '/auth/password',
+      '/auth/mfa',
+      '/auth/passkeys',
+      '/auth/oidc',
+    ].some((prefix) => request.url.startsWith(prefix));
     const bucket = strict ? loginLimiter : limiter;
     const { allowed, retryAfterMs } = bucket.take(key);
     if (!allowed) {
@@ -412,50 +422,63 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return { ok: true, csrfToken: csrfToken(token) };
   };
 
+  /**
+   * What follows a proved identity (password, or an identity provider): with a second factor, or
+   * a role that requires one, there is no session yet, only a short-lived challenge to present
+   * with the code; otherwise the session opens. `trustedSecondFactor` is for an identity
+   * provider the administrator trusts to have enforced its own MFA.
+   */
+  const afterPrimaryAuth = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    userId: string,
+    trustedSecondFactor = false,
+  ): Promise<Record<string, unknown>> => {
+    const tenant = tenantOf(request);
+    const mfa = options.mfa;
+    if (mfa && !trustedSecondFactor) {
+      const have = await mfaMethods(tenant.db, userId);
+      if (have.totp || have.email || have.passkey) {
+        return {
+          ok: true,
+          mfa: 'verify',
+          // What the account can answer with, so that the client shows the right choices.
+          methods: [
+            ...(have.totp ? ['totp', 'recovery'] : []),
+            ...(have.email ? ['email'] : []),
+            ...(have.passkey ? ['passkey'] : []),
+          ],
+          challenge: await createChallenge(tenant.db, userId),
+        };
+      }
+      if (await mfaRequired(tenant.db, tenant.security, mfa, userId)) {
+        return {
+          ok: true,
+          mfa: 'enroll',
+          methods: [
+            'totp',
+            ...(mfa.sendCode ? ['email'] : []),
+            ...(options.passkeys ? ['passkey'] : []),
+          ],
+          challenge: await createChallenge(tenant.db, userId),
+        };
+      }
+    }
+    return finishLogin(request, reply, userId);
+  };
+
   app.post('/auth/login', async (request, reply) => {
     const body = loginBody.parse(request.body);
     try {
-      const tenant = tenantOf(request);
       const userId = await checkCredentials(
-        tenant.db,
+        tenantOf(request).db,
         body.login,
         body.password,
         session,
         new Date(),
         request.ip,
       );
-      // With a second factor (or a role that requires one) there is no session yet, only a
-      // short-lived challenge to present with the code.
-      const mfa = options.mfa;
-      if (mfa) {
-        const have = await mfaMethods(tenant.db, userId);
-        if (have.totp || have.email || have.passkey) {
-          return {
-            ok: true,
-            mfa: 'verify',
-            // What the account can answer with, so that the client shows the right choices.
-            methods: [
-              ...(have.totp ? ['totp', 'recovery'] : []),
-              ...(have.email ? ['email'] : []),
-              ...(have.passkey ? ['passkey'] : []),
-            ],
-            challenge: await createChallenge(tenant.db, userId),
-          };
-        }
-        if (await mfaRequired(tenant.db, tenant.security, mfa, userId)) {
-          return {
-            ok: true,
-            mfa: 'enroll',
-            methods: [
-              'totp',
-              ...(mfa.sendCode ? ['email'] : []),
-              ...(options.passkeys ? ['passkey'] : []),
-            ],
-            challenge: await createChallenge(tenant.db, userId),
-          };
-        }
-      }
-      return await finishLogin(request, reply, userId);
+      return await afterPrimaryAuth(request, reply, userId);
     } catch (error) {
       if (error instanceof LoginError) {
         // The attempted login, truncated: who was targeted, never the password.
@@ -613,6 +636,16 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // ─── attachments ─────────────────────────────────────────────────────────────────────
   if (options.mfa) {
     registerMfaRoutes(app, { options: options.mfa, tenantOf, userOf, journal, finishLogin });
+  }
+
+  if (options.oidc) {
+    registerOidcRoutes(app, {
+      options: options.oidc,
+      tenantOf,
+      journal,
+      afterPrimaryAuth,
+      cost: session.cost,
+    });
   }
 
   if (options.passkeys) {

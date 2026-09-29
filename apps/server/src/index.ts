@@ -37,6 +37,8 @@ export {
 export type { BreachCheck, PasswordPolicy } from './password-policy.js';
 export type { PasswordCost, SessionInfo, SessionPolicy } from './auth.js';
 export { DEFAULT_MFA_GROUPS } from './mfa.js';
+export { googleProvider, microsoftProvider } from './oidc.js';
+export type { OidcOptions, OidcProvider } from './oidc.js';
 export type { PasskeyInfo, PasskeyOptions } from './passkeys.js';
 export type { MfaOptions, MfaState } from './mfa.js';
 export { corsHeaders, SECURITY_HEADERS } from './headers.js';
