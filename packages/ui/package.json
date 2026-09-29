@@ -9,7 +9,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build:tokens": "node --import ../../apps/cli/bin/ts-hooks.mjs scripts/build-tokens.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "fast-check": "^4.10.2"
   }
 }
