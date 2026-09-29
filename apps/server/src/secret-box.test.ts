@@ -24,6 +24,12 @@ describe('secret box', () => {
     const parts = sealed.split('.');
     parts[3] = `${parts[3]?.slice(0, -2) ?? ''}AA`;
     expect(open(key, parts.join('.'), 'alice')).toBeUndefined();
+    // A shortened tag is refused, however it was cut.
+    const short = [...parts];
+    short[2] = (parts[2] as string).slice(0, 8);
+    expect(open(key, short.join('.'), 'alice')).toBeUndefined();
+    short[2] = '';
+    expect(open(key, short.join('.'), 'alice')).toBeUndefined();
     for (const bad of ['', 'v1', 'v2.a.b.c', 'v1.a.b', 'v1...']) {
       expect(open(key, bad, 'alice'), bad).toBeUndefined();
     }

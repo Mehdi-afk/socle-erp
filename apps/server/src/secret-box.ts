@@ -9,13 +9,15 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 const VERSION = 'v1';
 
 /** True for a usable key: exactly 32 bytes. */
+const TAG_BYTES = 16;
+
 export const isSecretKey = (key: Uint8Array): boolean => key.length === 32;
 
 /** `v1.<nonce>.<tag>.<ciphertext>` (base64url). */
 export function seal(key: Uint8Array, plaintext: Uint8Array, context: string): string {
   if (!isSecretKey(key)) throw new RangeError('The encryption key must be 32 bytes.');
   const nonce = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce, { authTagLength: TAG_BYTES });
   cipher.setAAD(Buffer.from(context));
   const body = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return [
@@ -35,9 +37,14 @@ export function open(key: Uint8Array, sealed: string, context: string): Uint8Arr
   const [version, nonce, tag, body] = sealed.split('.');
   if (version !== VERSION || !nonce || !tag || body === undefined) return undefined;
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(nonce, 'base64url'));
+    // The tag length is fixed: a shortened tag is not accepted (GCM forgery with short tags).
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(nonce, 'base64url'), {
+      authTagLength: TAG_BYTES,
+    });
     decipher.setAAD(Buffer.from(context));
-    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    const authTag = Buffer.from(tag, 'base64url');
+    if (authTag.length !== TAG_BYTES) return undefined;
+    decipher.setAuthTag(authTag);
     return Uint8Array.from(
       Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]),
     );
