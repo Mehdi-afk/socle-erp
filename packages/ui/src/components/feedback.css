@@ -1,0 +1,72 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-ink);
+  text-align: center;
+}
+
+.ui-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  border-radius: 50%;
+  background: var(--color-surface-sunken);
+  color: var(--color-label);
+}
+
+.ui-empty-title {
+  margin: 0;
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+}
+
+.ui-empty-text {
+  margin: 0;
+  max-inline-size: 28rem;
+  color: var(--color-label);
+}
+
+.ui-empty-action {
+  margin-block-start: var(--space-3);
+}
+
+.ui-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ui-skeleton-line {
+  display: block;
+  block-size: 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  animation: ui-pulse 1.4s ease-in-out infinite;
+}
+
+.ui-skeleton-line:nth-child(2n + 1) {
+  inline-size: 85%;
+}
+
+.ui-skeleton-line:last-child {
+  inline-size: 55%;
+}
+
+@keyframes ui-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton-line {
+    animation: none;
+  }
+}

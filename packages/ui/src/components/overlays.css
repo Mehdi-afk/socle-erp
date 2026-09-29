@@ -1,0 +1,61 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+/* Tooltip: the ink as background, the card colour as text (the pair is checked in both themes). */
+.ui-tooltip {
+  z-index: 1000;
+  max-inline-size: 20rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-field);
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-size: var(--font-small-size);
+  font-weight: var(--font-small-weight);
+  line-height: 1.4;
+}
+
+.ui-tooltip-arrow {
+  fill: var(--color-ink);
+}
+
+/* Menu of actions. */
+.ui-menu {
+  z-index: 1000;
+  min-inline-size: 12rem;
+  padding: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ink) 16%, transparent);
+  color: var(--color-ink);
+}
+
+.ui-menu-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-block-size: 36px;
+  padding-inline: var(--space-3);
+  border-radius: calc(var(--radius-field) - 4px);
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-menu-item[data-highlighted] {
+  background: var(--color-surface-sunken);
+}
+
+.ui-menu-item[data-tone='danger'] {
+  color: var(--color-danger-text);
+}
+
+.ui-menu-item[data-disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-menu-separator {
+  block-size: 1px;
+  margin-block: var(--space-2);
+  background: var(--color-line);
+}

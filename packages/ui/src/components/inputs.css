@@ -1,0 +1,105 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.ui-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-ink);
+}
+
+.ui-label {
+  color: var(--color-label);
+  font-size: var(--font-label-size);
+}
+
+/* The border of a field must reach 3 : 1 against the card: it is the label colour, not the hairline. */
+.ui-input {
+  min-block-size: 40px;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-label);
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.ui-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+  border-inline-start-width: 4px;
+}
+
+.ui-hint {
+  margin: 0;
+  color: var(--color-label);
+  font-size: var(--font-small-size);
+}
+
+.ui-error {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: var(--font-small-size);
+  font-weight: var(--font-small-weight);
+}
+
+/* Checkbox and switch: the native control, aligned with its label. */
+.ui-toggle {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-block-size: 32px;
+}
+
+.ui-toggle-input {
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin: 0;
+  accent-color: var(--color-nav-active);
+  cursor: pointer;
+}
+
+.ui-toggle-label {
+  cursor: pointer;
+}
+
+/* The switch is a wider, rounded native checkbox. */
+.ui-toggle-input[role='switch'] {
+  appearance: none;
+  inline-size: 2.5rem;
+  block-size: 1.5rem;
+  border: 1px solid var(--color-label);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  transition: background-color var(--duration-fast);
+}
+
+.ui-toggle-input[role='switch']::before {
+  content: '';
+  display: block;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  margin: 0.125rem;
+  border-radius: 50%;
+  background: var(--color-label);
+  transition: transform var(--duration-fast);
+}
+
+.ui-toggle-input[role='switch']:checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.ui-toggle-input[role='switch']:checked::before {
+  background: var(--color-on-accent);
+  transform: translateX(1rem);
+}
+
+/* The knob travels the other way when the page reads from right to left. */
+:dir(rtl) .ui-toggle-input[role='switch']:checked::before {
+  transform: translateX(-1rem);
+}
