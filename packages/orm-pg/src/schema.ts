@@ -43,6 +43,8 @@ export const AUTH_TABLES = {
   recovery: 'socle_mfa_recovery',
   challenge: 'socle_mfa_challenge',
   emailOtp: 'socle_mfa_email_otp',
+  passkey: 'socle_passkey',
+  ceremony: 'socle_webauthn_ceremony',
 } as const;
 
 /**
