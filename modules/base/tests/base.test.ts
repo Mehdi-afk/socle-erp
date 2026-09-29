@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import manifest from '../manifest.js';
 import companyScoped from '../models/company-scoped.js';
+import attachment from '../models/ir-attachment.js';
 import configParameter from '../models/ir-config-parameter.js';
 import sequence, { formatSequence, localDate } from '../models/ir-sequence.js';
 import accessAndRules from '../models/ir-model-access.js';
@@ -36,6 +37,7 @@ const models: ModelDefinition[] = [
   ...countries,
   configParameter,
   sequence,
+  attachment,
 ];
 const security = { module: manifest.name, groups, access, rules };
 

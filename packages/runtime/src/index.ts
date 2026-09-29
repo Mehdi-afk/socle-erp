@@ -2,6 +2,7 @@
 export { ClamavError, pingClamav, scanWithClamav } from './clamav.js';
 export type { ClamavConfig, ScanResult } from './clamav.js';
 export { compose, moduleData } from './compose.js';
+export { contentDisposition, detectFileType, sanitizeFileName } from './files.js';
 export type { Composition } from './compose.js';
 export { loadModules, ModuleLoadError } from './loader.js';
 export { amzDate, createS3Client, S3Error, signV4 } from './s3.js';

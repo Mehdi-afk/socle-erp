@@ -44,6 +44,8 @@ import {
   sessionCookie,
   type SessionPolicy,
 } from './auth.js';
+import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
+import { HttpError } from './http-error.js';
 import { corsHeaders, SECURITY_HEADERS } from './headers.js';
 import { createRateLimiter, type BucketPolicy } from './rate-limit.js';
 import { tenantFromHost, type TenantDirectory, type TenantRuntime } from './tenants.js';
@@ -65,18 +67,8 @@ export interface ServerOptions {
   readonly session?: SessionPolicy | undefined;
   /** Pino logger options (false in tests). */
   readonly logger?: boolean | undefined;
-}
-
-/** HTTP errors whose message may be shown to the client. */
-class HttpError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
+  /** File storage: the attachment endpoints exist only when it is configured. */
+  readonly attachments?: AttachmentOptions | undefined;
 }
 
 const id = z.uuid();
@@ -356,6 +348,11 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       );
     },
   );
+
+  // ─── attachments ─────────────────────────────────────────────────────────────────────
+  if (options.attachments) {
+    registerAttachmentRoutes(app, { tenantOf, userOf, runner }, options.attachments);
+  }
 
   // ─── synchronisation (§6.3) ──────────────────────────────────────────────────────────
   app.post('/sync/devices', async (request) => {
