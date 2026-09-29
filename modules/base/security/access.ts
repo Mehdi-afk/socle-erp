@@ -32,4 +32,8 @@ export default [
   // Attachments: through the attachment endpoints only (rights of the target record); the
   // administrators see them all.
   { model: 'ir.attachment', group: 'base.group_system', ...all },
+  // Scheduled tasks come from module data: administrators pause or reschedule them, and read
+  // their log; nobody creates one by hand or rewrites the log.
+  { model: 'ir.cron', group: 'base.group_system', read: true, write: true },
+  { model: 'ir.cron.run', group: 'base.group_system', ...read },
 ] satisfies AccessDefinition[];

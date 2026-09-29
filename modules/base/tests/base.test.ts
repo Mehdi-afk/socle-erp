@@ -13,6 +13,7 @@ import manifest from '../manifest.js';
 import companyScoped from '../models/company-scoped.js';
 import attachment from '../models/ir-attachment.js';
 import configParameter from '../models/ir-config-parameter.js';
+import cronModels from '../models/ir-cron.js';
 import sequence, { formatSequence, localDate } from '../models/ir-sequence.js';
 import accessAndRules from '../models/ir-model-access.js';
 import company from '../models/res-company.js';
@@ -38,6 +39,7 @@ const models: ModelDefinition[] = [
   configParameter,
   sequence,
   attachment,
+  ...cronModels,
 ];
 const security = { module: manifest.name, groups, access, rules };
 
