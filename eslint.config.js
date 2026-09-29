@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import js from '@eslint/js';
+import react from '@eslint-react/eslint-plugin';
 import prettier from 'eslint-config-prettier';
 import security from 'eslint-plugin-security';
 import globals from 'globals';
@@ -100,10 +101,23 @@ export default tseslint.config(
     },
   },
 
+  // React (design system, view engine, web client): the hooks rules and the usual React checks.
+  // (`eslint-plugin-react-hooks` was not usable: its Babel dependency chain trips the
+  // supply-chain policy `trustPolicy: no-downgrade`; this plugin carries the same two rules.)
+  {
+    ...react.configs['recommended-type-checked'],
+    files: ['packages/ui/**/*.tsx', 'packages/view-engine/**/*.tsx', 'apps/web/**/*.tsx'],
+  },
+
   // Tooling scripts and config files run on Node
   {
     files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // Tests of the design system read the files of the installed font packages.
+    files: ['packages/ui/**/*.test.ts', 'packages/ui/**/*.test.tsx'],
+    rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
   {
     // Scripts deliberately read/execute paths they compute themselves.

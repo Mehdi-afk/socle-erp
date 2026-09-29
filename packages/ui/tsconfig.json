@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts", "vitest.config.ts"]
 }

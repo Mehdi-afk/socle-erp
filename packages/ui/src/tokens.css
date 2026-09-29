@@ -126,11 +126,14 @@
   --color-info: #3B7DDD;
   --color-info-soft: #E1ECFC;
   --color-info-text: #1F5FBF;
+  --shadow-card:
+    0 1px 2px color-mix(in srgb, var(--color-ink) 6%, transparent),
+    0 8px 24px color-mix(in srgb, var(--color-ink) 6%, transparent);
 }
 
 :root {
-  --font-sans: 'Inter Variable', 'Noto Sans Arabic', system-ui, sans-serif;
-  --font-arabic: 'Noto Sans Arabic', 'Inter Variable', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', 'Noto Sans Arabic Variable', system-ui, sans-serif;
+  --font-arabic: 'Noto Sans Arabic Variable', 'Inter Variable', system-ui, sans-serif;
   --font-title-size: 1.875rem;
   --font-title-weight: 400;
   --font-heading-size: 1.25rem;
@@ -162,16 +165,12 @@
   --card-padding: 24px;
 }
 
-:root[data-theme='light'] {
-  --shadow-card: 0 1px 2px rgb(27 27 29 / 6%), 0 8px 24px rgb(27 27 29 / 6%);
-}
-
 :root[data-density='compact'] {
   --density-row: 32px;
   --card-padding: 16px;
 }
 
-@media (max-width: 819px) {
+@media (width < 820px) {
   :root {
     --radius-card: 16px;
   }

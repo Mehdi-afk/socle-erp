@@ -39,6 +39,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Lint CSS (no hard-coded colour, no physical direction)
+        run: pnpm lint:css
+
       - name: Format
         run: pnpm format:check
 
