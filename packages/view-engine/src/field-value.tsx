@@ -78,20 +78,24 @@ export function FieldValue({
 
   if (widget === 'phone') {
     const href = phoneHref(text);
-    return href === undefined ? <>{text}</> : <a href={href}>{text}</a>;
+    return <bdi dir="ltr">{href === undefined ? text : <a href={href}>{text}</a>}</bdi>;
   }
   if (widget === 'email') {
     const href = emailHref(text);
-    return href === undefined ? <>{text}</> : <a href={href}>{text}</a>;
+    return <bdi dir="ltr">{href === undefined ? text : <a href={href}>{text}</a>}</bdi>;
   }
   if (widget === 'url') {
     const href = webHref(text);
-    return href === undefined ? (
-      <>{text}</>
-    ) : (
-      <a href={href} target="_blank" rel="noopener noreferrer">
-        {text}
-      </a>
+    return (
+      <bdi dir="ltr">
+        {href === undefined ? (
+          text
+        ) : (
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {text}
+          </a>
+        )}
+      </bdi>
     );
   }
 

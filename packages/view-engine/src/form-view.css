@@ -25,11 +25,14 @@
   font-size: var(--font-title-size);
   font-weight: var(--font-title-weight);
   overflow-wrap: anywhere;
+
+  /* The header sits on the page itself, not on a card. */
+  color: var(--color-shell-text);
 }
 
 .ve-form-subtitle {
   margin: 0;
-  color: var(--color-label);
+  color: var(--color-shell-muted);
   font-size: var(--font-body-size);
 }
 
