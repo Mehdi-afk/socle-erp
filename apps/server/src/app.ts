@@ -63,6 +63,7 @@ import {
   type PasswordPolicy,
 } from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
+import { registerPasskeyRoutes, type PasskeyOptions } from './passkeys.js';
 import {
   createChallenge,
   mfaMethods,
@@ -111,6 +112,11 @@ export interface ServerOptions {
    * administrators) cannot sign in without one.
    */
   readonly mfa?: MfaOptions | undefined;
+  /**
+   * Passkeys (WebAuthn): registration, sign-in with a passkey alone, and passkeys as a second
+   * step. The relying party is the tenant's own host.
+   */
+  readonly passkeys?: PasskeyOptions | undefined;
 }
 
 const id = z.uuid();
@@ -249,7 +255,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // 2. Rate limit, per tenant and client address (stricter for logins).
   app.addHook('onRequest', async (request, reply) => {
     const key = `${request.headers.host ?? ''}|${request.ip}`;
-    const strict = ['/auth/login', '/auth/password', '/auth/mfa'].some((prefix) =>
+    const strict = ['/auth/login', '/auth/password', '/auth/mfa', '/auth/passkeys'].some((prefix) =>
       request.url.startsWith(prefix),
     );
     const bucket = strict ? loginLimiter : limiter;
@@ -277,6 +283,9 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     '/auth/logout',
     '/auth/password/forgot',
     '/auth/password/reset',
+    // Sign-in with a passkey happens before any session.
+    '/auth/passkeys/login/options',
+    '/auth/passkeys/login/verify',
   ]);
   app.addHook('preHandler', (request) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return Promise.resolve();
@@ -285,7 +294,12 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     // A second-factor step made with a sign-in challenge (a secret only the browser that
     // just typed the password holds) has no session token yet: the challenge is its proof.
     const challenge = (request.body as { challenge?: unknown } | null | undefined)?.challenge;
-    if (path.startsWith('/auth/mfa/') && typeof challenge === 'string') return Promise.resolve();
+    if (
+      (path.startsWith('/auth/mfa/') || path.startsWith('/auth/passkeys/register/')) &&
+      typeof challenge === 'string'
+    ) {
+      return Promise.resolve();
+    }
     const token = readSessionCookie(request.headers.cookie);
     // Presence check only; the token is compared in constant time by csrfMatches.
     // eslint-disable-next-line security/detect-possible-timing-attacks
@@ -415,12 +429,16 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       const mfa = options.mfa;
       if (mfa) {
         const have = await mfaMethods(tenant.db, userId);
-        if (have.totp || have.email) {
+        if (have.totp || have.email || have.passkey) {
           return {
             ok: true,
             mfa: 'verify',
             // What the account can answer with, so that the client shows the right choices.
-            methods: [...(have.totp ? ['totp', 'recovery'] : []), ...(have.email ? ['email'] : [])],
+            methods: [
+              ...(have.totp ? ['totp', 'recovery'] : []),
+              ...(have.email ? ['email'] : []),
+              ...(have.passkey ? ['passkey'] : []),
+            ],
             challenge: await createChallenge(tenant.db, userId),
           };
         }
@@ -428,7 +446,11 @@ export function buildServer(options: ServerOptions): FastifyInstance {
           return {
             ok: true,
             mfa: 'enroll',
-            methods: ['totp', ...(mfa.sendCode ? ['email'] : [])],
+            methods: [
+              'totp',
+              ...(mfa.sendCode ? ['email'] : []),
+              ...(options.passkeys ? ['passkey'] : []),
+            ],
             challenge: await createChallenge(tenant.db, userId),
           };
         }
@@ -591,6 +613,16 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // ─── attachments ─────────────────────────────────────────────────────────────────────
   if (options.mfa) {
     registerMfaRoutes(app, { options: options.mfa, tenantOf, userOf, journal, finishLogin });
+  }
+
+  if (options.passkeys) {
+    registerPasskeyRoutes(app, {
+      options: { ...options.passkeys, mfa: options.passkeys.mfa ?? options.mfa },
+      tenantOf,
+      userOf,
+      journal,
+      finishLogin,
+    });
   }
 
   if (options.attachments) {

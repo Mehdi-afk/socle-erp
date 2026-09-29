@@ -60,10 +60,14 @@ export async function mfaState(db: Executor, userId: string): Promise<MfaState> 
 export async function mfaMethods(
   db: Executor,
   userId: string,
-): Promise<{ readonly totp: boolean; readonly email: boolean }> {
+): Promise<{ readonly totp: boolean; readonly email: boolean; readonly passkey: boolean }> {
+  const passkeys = await sql<{
+    n: string;
+  }>`select count(*) as n from ${sql.table(T.passkey)} where user_id = ${userId}`.execute(db);
   return {
     totp: (await mfaState(db, userId)) === 'enrolled',
     email: await emailEnabled(db, userId),
+    passkey: Number(passkeys.rows[0]?.n ?? 0) > 0,
   };
 }
 
@@ -330,7 +334,11 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
     const db = tenantOf(request).db;
     const userId = await challengeUser(db, body.challenge);
     const methods = userId === undefined ? undefined : await mfaMethods(db, userId);
-    if (userId === undefined || methods === undefined || (!methods.totp && !methods.email)) {
+    if (
+      userId === undefined ||
+      methods === undefined ||
+      (!methods.totp && !methods.email && !methods.passkey)
+    ) {
       throw invalidCode();
     }
     let kind: 'totp' | 'recovery' | 'email' | undefined;
@@ -403,7 +411,7 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
   ): Promise<void> => {
     if (who.challenge === undefined) return;
     const have = await mfaMethods(tenantOf(request).db, who.userId);
-    if (have.totp || have.email) {
+    if (have.totp || have.email || have.passkey) {
       throw new HttpError(409, 'mfa_enrolled', 'Sign in with your second factor first.');
     }
   };
@@ -452,9 +460,11 @@ export function registerMfaRoutes(app: FastifyInstance, deps: MfaRouteDeps): voi
     const user = await userOf(request);
     const tenant = tenantOf(request);
     // A required role keeps at least one factor: it cannot drop its only one.
+    const others = await mfaMethods(tenant.db, user.id);
     if (
-      (await mfaRequired(tenant.db, tenant.security, options, user.id)) &&
-      !(await mfaMethods(tenant.db, user.id)).totp
+      !others.totp &&
+      !others.passkey &&
+      (await mfaRequired(tenant.db, tenant.security, options, user.id))
     ) {
       throw new HttpError(403, 'mfa_required', 'Your role requires a second factor.');
     }

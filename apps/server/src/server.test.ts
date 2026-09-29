@@ -25,6 +25,10 @@ import { createTenantDirectory, tenantFromHost, type TenantDirectory } from './t
 import { verifySecondFactor } from './mfa.js';
 import { issueEmailCode, verifyEmailCode } from './mfa-email.js';
 import { base32Decode, hotp, totpStep } from './totp.js';
+import {
+  virtualAuthenticator,
+  type VirtualAuthenticator,
+} from './virtual-authenticator.support.js';
 
 /** The anti-CSRF header a browser client would send with this session cookie. */
 const csrfHeader = (cookie: string): Record<string, string> => {
@@ -1084,6 +1088,304 @@ describe('HTTP server', () => {
         expect.arrayContaining(['mfa_enabled', 'login']),
       );
       expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+  });
+
+  describe('passkeys', () => {
+    const RP = { id: 'acme.erp.test', origin: 'https://acme.erp.test' };
+    const key = Uint8Array.from(randomBytes(32));
+
+    async function withPasskeys(overrides: Partial<ServerOptions> = {}) {
+      const s = await server({
+        passkeys: {},
+        passwordPolicy: { minLength: 12 },
+        loginRateLimit: { capacity: 1000, refillPerSecond: 1000 },
+        ...overrides,
+      });
+      type Options = { ceremony: string; options: { challenge: string } };
+      const register = async (
+        cookie: string,
+        authenticator: VirtualAuthenticator,
+        tweaks: Parameters<VirtualAuthenticator['create']>[2] = {},
+        password = 'alice-pass',
+        name?: string,
+      ) => {
+        const start = await s.request('POST', '/auth/passkeys/register/options', {
+          cookie,
+          body: { password },
+        });
+        if (start.statusCode !== 200) return start;
+        const { ceremony, options } = start.json<Options>();
+        return s.request('POST', '/auth/passkeys/register/verify', {
+          cookie,
+          body: {
+            ceremony,
+            ...(name === undefined ? {} : { name }),
+            response: authenticator.create(options, RP, tweaks),
+          },
+        });
+      };
+      const options = async (path: string, body: Record<string, unknown> = {}) =>
+        (await s.request('POST', path, { body })).json<Options>();
+      const passkeyLogin = async (
+        authenticator: VirtualAuthenticator,
+        userHandle: string,
+        tweaks: Parameters<VirtualAuthenticator['get']>[3] = {},
+      ) => {
+        const { ceremony, options: o } = await options('/auth/passkeys/login/options');
+        const response = authenticator.get(o, RP, userHandle, tweaks);
+        return {
+          ceremony,
+          response,
+          options: o,
+          answer: () =>
+            s.request('POST', '/auth/passkeys/login/verify', { body: { ceremony, response } }),
+        };
+      };
+      return { ...s, register, options, passkeyLogin };
+    }
+
+    it('registers a passkey, lists it without its key, and refuses duplicates and a wrong password', async () => {
+      const { request, signIn, register, db } = await withPasskeys();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const phone = virtualAuthenticator();
+
+      const wrong = await register(cookie, phone, {}, 'not my password');
+      expect(wrong.statusCode).toBe(403);
+      const start = await request('POST', '/auth/passkeys/register/options', {
+        cookie,
+        body: { password: 'alice-pass' },
+      });
+      const { options } = start.json<{
+        options: {
+          rp: { id: string };
+          authenticatorSelection: { userVerification: string; residentKey: string };
+          user: { name: string };
+        };
+      }>();
+      expect(options.rp.id).toBe('acme.erp.test');
+      expect(options.authenticatorSelection).toMatchObject({
+        userVerification: 'required',
+        residentKey: 'required',
+      });
+      expect(options.user.name).toBe('alice@acme.test');
+
+      expect((await register(cookie, phone, {}, 'alice-pass', 'Alice phone')).statusCode).toBe(200);
+      const listed = await request('GET', '/auth/passkeys', { cookie });
+      expect(listed.json<{ passkeys: { id: string; name: string }[] }>().passkeys).toMatchObject([
+        { id: phone.id, name: 'Alice phone' },
+      ]);
+      expect(listed.body).not.toContain('publicKey');
+      expect(listed.body).not.toContain('public_key');
+      // The same credential twice is refused.
+      expect((await register(cookie, phone)).statusCode).toBe(409);
+      // Without a session there is nothing to register on; one bad answer is not stored.
+      expect(
+        (await request('POST', '/auth/passkeys/register/options', { body: { password: 'x' } }))
+          .statusCode,
+      ).toBe(401);
+      const other = virtualAuthenticator();
+      for (const bad of [
+        { origin: 'https://evil.test' },
+        { rpId: 'evil.test' },
+        { userVerified: false },
+      ]) {
+        expect((await register(cookie, other, bad)).statusCode, JSON.stringify(bad)).toBe(400);
+      }
+      const count = await sql<{ n: string }>`select count(*) as n from socle_passkey`.execute(db);
+      expect(Number(count.rows[0]?.n)).toBe(1);
+    });
+
+    it('signs in with a passkey alone and refuses every forgery', async () => {
+      const { request, signIn, register, options, passkeyLogin, db } = await withPasskeys();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const phone = virtualAuthenticator();
+      await register(cookie, phone);
+
+      const good = await passkeyLogin(phone, 'alice');
+      const done = await good.answer();
+      expect(done.statusCode).toBe(200);
+      expect(done.json()).toHaveProperty('csrfToken');
+      const session = String(done.headers['set-cookie']).split(';')[0] as string;
+      expect((await request('GET', '/sync/pull', { cookie: session })).statusCode).toBe(200);
+
+      // The same answer cannot be replayed: its ceremony is spent.
+      expect((await good.answer()).statusCode).toBe(401);
+      // Nor can a fresh signature (counter up) over the same challenge use the spent ceremony.
+      const resigned = phone.get(good.options, RP, 'alice');
+      const reused = await request('POST', '/auth/passkeys/login/verify', {
+        body: { ceremony: good.ceremony, response: resigned },
+      });
+      expect(reused.statusCode).toBe(401);
+      // A signature made for another challenge, another site, another party, or without user
+      // verification is refused, and so is a counter that does not go up.
+      const forged: [string, Parameters<VirtualAuthenticator['get']>[3]][] = [
+        ['origin', { origin: 'https://evil.test' }],
+        ['party', { rpId: 'evil.test' }],
+        ['no verification', { userVerified: false }],
+        ['counter back', { counter: 1 }],
+      ];
+      for (const [label, tweak] of forged) {
+        expect((await (await passkeyLogin(phone, 'alice', tweak)).answer()).statusCode, label).toBe(
+          401,
+        );
+      }
+      const first = await options('/auth/passkeys/login/options');
+      const second = await options('/auth/passkeys/login/options');
+      const crossed = phone.get(first.options, RP, 'alice');
+      expect(
+        (
+          await request('POST', '/auth/passkeys/login/verify', {
+            body: { ceremony: second.ceremony, response: crossed },
+          })
+        ).statusCode,
+      ).toBe(401);
+      // An unknown passkey, and a ceremony of another kind, open nothing.
+      expect(
+        (await (await passkeyLogin(virtualAuthenticator(), 'alice')).answer()).statusCode,
+      ).toBe(401);
+      const mfaKind = await options('/auth/passkeys/login/options');
+      expect(
+        (
+          await request('POST', '/auth/mfa/passkey/verify', {
+            body: {
+              challenge: 'x'.repeat(43),
+              ceremony: mfaKind.ceremony,
+              response: phone.get(mfaKind.options, RP, 'alice'),
+            },
+          })
+        ).statusCode,
+      ).toBe(401);
+
+      // A disabled account cannot sign in with its passkey.
+      await sql`update socle_user set active = false where id = 'alice'`.execute(db);
+      expect((await (await passkeyLogin(phone, 'alice')).answer()).statusCode).toBe(401);
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+
+    it('lets only one of two simultaneous answers with the same counter through', async () => {
+      const { signIn, register, passkeyLogin } = await withPasskeys();
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const phone = virtualAuthenticator();
+      await register(cookie, phone);
+      // Two genuine ceremonies answered by a cloned key that reports the same counter.
+      const [a, b] = await Promise.all([
+        passkeyLogin(phone, 'alice', { counter: 7 }),
+        passkeyLogin(phone, 'alice', { counter: 7 }),
+      ]);
+      const codes = (await Promise.all([a.answer(), b.answer()])).map((r) => r.statusCode).sort();
+      expect(codes).toEqual([200, 401]);
+    });
+
+    it('serves as the second step after the password, for that account only', async () => {
+      const { request, signIn, register, options, db } = await withPasskeys(
+        (() => {
+          const mfa = { key, requiredGroups: [] as string[] };
+          return { mfa, passkeys: { mfa } };
+        })(),
+      );
+      const cookie = await signIn('alice@acme.test', 'alice-pass');
+      const bobCookie = await signIn('bob@acme.test', 'bob-pass');
+      const phone = virtualAuthenticator();
+      const bobs = virtualAuthenticator();
+      await register(cookie, phone);
+      await register(bobCookie, bobs, {}, 'bob-pass');
+
+      const login = await request('POST', '/auth/login', {
+        body: { login: 'alice@acme.test', password: 'alice-pass' },
+      });
+      expect(login.headers['set-cookie']).toBeUndefined();
+      const { challenge, methods } = login.json<{ challenge: string; methods: string[] }>();
+      expect(methods).toEqual(['passkey']);
+
+      const start = await options('/auth/mfa/passkey/options', { challenge });
+      // Bob's passkey does not open Alice's challenge.
+      const wrong = await request('POST', '/auth/mfa/passkey/verify', {
+        body: { challenge, ceremony: start.ceremony, response: bobs.get(start.options, RP, 'bob') },
+      });
+      expect(wrong.statusCode).toBe(401);
+      const again = await options('/auth/mfa/passkey/options', { challenge });
+      const ok = await request('POST', '/auth/mfa/passkey/verify', {
+        body: {
+          challenge,
+          ceremony: again.ceremony,
+          response: phone.get(again.options, RP, 'alice'),
+        },
+      });
+      expect(ok.statusCode).toBe(200);
+      const session = String(ok.headers['set-cookie']).split(';')[0] as string;
+      expect((await request('GET', '/sync/pull', { cookie: session })).statusCode).toBe(200);
+      // The challenge is spent by success.
+      const spent = await options('/auth/mfa/passkey/options', { challenge }).catch(
+        () => undefined,
+      );
+      expect(spent?.ceremony).toBeUndefined();
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+
+    it('lets a role that requires a second factor enrol a passkey first, and keep one', async () => {
+      const mfa = { key, requiredGroups: ['srv.group_manager'] };
+      const { request, options, db } = await withPasskeys({ mfa, passkeys: { mfa } });
+      const login = await request('POST', '/auth/login', {
+        body: { login: 'bob@acme.test', password: 'bob-pass' },
+      });
+      const {
+        mfa: state,
+        methods,
+        challenge,
+      } = login.json<{
+        mfa: string;
+        methods: string[];
+        challenge: string;
+      }>();
+      expect([state, methods]).toEqual(['enroll', ['totp', 'passkey']]);
+      expect(login.headers['set-cookie']).toBeUndefined();
+
+      const phone = virtualAuthenticator();
+      const start = await options('/auth/passkeys/register/options', { challenge });
+      // A stale cookie in the way does not matter: the challenge is the proof.
+      const done = await request('POST', '/auth/passkeys/register/verify', {
+        cookie: `__Host-socle_session=${'a'.repeat(43)}`,
+        body: { ceremony: start.ceremony, challenge, response: phone.create(start.options, RP) },
+      });
+      expect(done.statusCode).toBe(200);
+      const cookie = String(done.headers['set-cookie']).split(';')[0] as string;
+      expect((await request('GET', '/sync/pull', { cookie })).statusCode).toBe(200);
+
+      // Its only factor cannot be removed; an account with one cannot add another by challenge.
+      const removed = await request('DELETE', `/auth/passkeys/${phone.id}`, { cookie });
+      expect([removed.statusCode, removed.json<{ error: string }>().error]).toEqual([
+        403,
+        'mfa_required',
+      ]);
+      const next = (
+        await request('POST', '/auth/login', {
+          body: { login: 'bob@acme.test', password: 'bob-pass' },
+        })
+      ).json<{ challenge: string }>();
+      const downgrade = await request('POST', '/auth/passkeys/register/options', {
+        body: { challenge: next.challenge },
+      });
+      expect(downgrade.statusCode).toBe(409);
+      expect(await verifyAudit(db)).toMatchObject({ ok: true });
+    });
+
+    it('removes one of its own passkeys and nobody else’s', async () => {
+      const { request, signIn, register, passkeyLogin } = await withPasskeys();
+      const alice = await signIn('alice@acme.test', 'alice-pass');
+      const bob = await signIn('bob@acme.test', 'bob-pass');
+      const phone = virtualAuthenticator();
+      await register(alice, phone);
+      expect(
+        (await request('DELETE', `/auth/passkeys/${phone.id}`, { cookie: bob })).statusCode,
+      ).toBe(404);
+      expect(
+        (await request('DELETE', `/auth/passkeys/${phone.id}`, { cookie: alice })).statusCode,
+      ).toBe(200);
+      expect(
+        (await request('DELETE', `/auth/passkeys/${phone.id}`, { cookie: alice })).statusCode,
+      ).toBe(404);
+      expect((await (await passkeyLogin(phone, 'alice')).answer()).statusCode).toBe(401);
     });
   });
 

@@ -208,6 +208,17 @@ async function ensureSyncObjects(trx: Transaction<Tables>): Promise<void> {
   await sql`create table if not exists ${sql.table(a.emailOtp)} (user_id text primary key references ${sql.table(a.user)} (id) on delete cascade, code_hash text not null, expires_at timestamptz not null, attempts integer not null default 0, sent_at timestamptz not null)`.execute(
     trx,
   );
+  // Passkeys (WebAuthn): the public key and its signature counter, never a secret. A ceremony is
+  // the challenge of one registration or sign-in in progress: single use, short-lived.
+  await sql`create table if not exists ${sql.table(a.passkey)} (id text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, public_key text not null, counter bigint not null default 0, transports text[] not null default '{}', name text not null, device_type text not null, backed_up boolean not null default false, created_at timestamptz not null default now(), last_used_at timestamptz)`.execute(
+    trx,
+  );
+  await sql`create index if not exists ${sql.id(`${a.passkey}_user_idx`)} on ${sql.table(a.passkey)} (user_id)`.execute(
+    trx,
+  );
+  await sql`create table if not exists ${sql.table(a.ceremony)} (token_hash text primary key, challenge text not null, purpose text not null, user_id text references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null)`.execute(
+    trx,
+  );
   // Password reset: one row per request, only the hash of the token is stored; used once.
   await sql`create table if not exists ${sql.table(a.passwordReset)} (token_hash text primary key, user_id text not null references ${sql.table(a.user)} (id) on delete cascade, expires_at timestamptz not null, used_at timestamptz)`.execute(
     trx,
