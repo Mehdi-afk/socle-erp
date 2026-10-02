@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import { defineModel, f, ValidationError } from '@socle/framework';
+import { remindActivities } from '../lib/reminders.js';
 
 export default [
   defineModel({
@@ -40,6 +41,8 @@ export default [
       typeId: f.many2one('mail.activity.type', { required: true, ondelete: 'restrict' }),
       assignedUserId: f.char({ required: true, readonly: true, index: true }),
       dueDate: f.date({ required: true, index: true }),
+      reminderTimeZone: f.char({ readonly: true }),
+      remindedAt: f.datetime({ readonly: true, index: true }),
       state: f.selection(
         [
           ['planned', 'À faire'],
@@ -50,6 +53,26 @@ export default [
       ),
       feedback: f.text(),
     },
+    serverMethods: (Base) =>
+      class extends Base {
+        async remindDue(): Promise<void> {
+          await remindActivities(this.env);
+        }
+      },
+  }),
+  defineModel({
+    name: 'mail.activity.reminder',
+    offline: { syncable: false },
+    fields: {
+      activityId: f.many2one('mail.activity', {
+        required: true,
+        readonly: true,
+        ondelete: 'cascade',
+      }),
+      userId: f.char({ required: true, index: true, readonly: true }),
+      isRead: f.boolean({ required: true, default: false }),
+    },
+    unique: [{ name: 'activity_user_unique', fields: ['activityId', 'userId'] }],
   }),
   defineModel({
     name: 'mail.notification',

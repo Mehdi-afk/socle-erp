@@ -51,7 +51,7 @@ export const notificationSchema = z.strictObject({
     .max(63)
     .regex(/^[a-z][a-z0-9_.]*$/),
   recordId: id,
-  kind: z.enum(['comment', 'note', 'tracking']),
+  kind: z.enum(['comment', 'note', 'tracking', 'reminder']),
 });
 export const calendarEventSchema = threadActivitySchema.extend({
   resModel: z

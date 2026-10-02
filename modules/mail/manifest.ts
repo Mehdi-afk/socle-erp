@@ -3,7 +3,7 @@ import { defineManifest } from '@socle/framework';
 
 export default defineManifest({
   name: 'mail',
-  version: '0.1.0',
+  version: '0.1.1',
   label: {
     fr: 'Échanges et activités',
     en: 'Conversations and activities',
@@ -14,4 +14,5 @@ export default defineManifest({
   edition: 'community',
   engines: { socle: '^0.1.0' },
   depends: ['base'],
+  capabilities: ['cron'],
 });
