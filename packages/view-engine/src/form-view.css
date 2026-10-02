@@ -43,6 +43,10 @@
   align-items: center;
 }
 
+.ve-form .ui-card-actions {
+  margin-inline-start: auto;
+}
+
 /* Groups that hold several cards sit side by side when there is room. */
 .ve-form-columns {
   display: grid;
@@ -63,6 +67,10 @@
   white-space: pre-line;
 }
 
+.ve-form-value a {
+  color: var(--color-link);
+}
+
 /* The list inside a card: the card already gives the frame. */
 .ve-form-embedded .ve-list {
   padding: 0;
@@ -79,4 +87,36 @@
 .ve-secret-error {
   color: var(--color-danger-text);
   font-size: var(--font-small-size);
+}
+
+.ve-form-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.ve-form-editor .ui-input {
+  min-inline-size: 0;
+  inline-size: 100%;
+  box-sizing: border-box;
+}
+
+.ve-form-editor textarea {
+  padding-block: var(--space-2);
+  resize: vertical;
+}
+
+.ve-form-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-shell-text);
+}
+
+.ve-form-relation-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }

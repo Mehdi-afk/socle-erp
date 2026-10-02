@@ -31,6 +31,7 @@ export type { MemoryDataSource } from './memory-data-source.js';
 export { messagesFor } from './messages.js';
 export type { Messages } from './messages.js';
 export { humanize, resolveText } from './text.js';
+export { WriteFailure } from './types.js';
 export type {
   DataSource,
   Density,
