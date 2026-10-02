@@ -12,6 +12,7 @@ import {
 } from '@socle/framework';
 import { applySchema, createPgDatabase, createPgStorage, type Executor } from '@socle/orm-pg';
 import { compose, databaseUrl, loadModules, tenantDatabase } from '@socle/runtime';
+import { runCron, type CronRunStatus } from '@socle/worker';
 import {
   buildServer,
   createTenantDirectory,
@@ -42,6 +43,7 @@ export interface WebBrowserFixture {
   readonly credentials: typeof DEMO_CREDENTIALS;
   readContact(): Promise<{ name: string; city: string | null }>;
   revokeManagerSessions(): Promise<void>;
+  runActivityReminders(): Promise<CronRunStatus>;
   close(): Promise<void>;
 }
 
@@ -224,6 +226,18 @@ export async function createWebBrowserFixture(pgUrl: string): Promise<WebBrowser
       contactId,
       foreignContactId,
       readContact: () => readContact(db, contactId),
+      async runActivityReminders() {
+        const { rows } = await sql<{ record_id: string }>`select record_id from socle_external_id
+          where module = 'mail' and name = 'activity_reminders'`.execute(db);
+        if (!rows[0]) throw new Error('The reminder schedule was not installed.');
+        return runCron({
+          db,
+          registry,
+          security,
+          manifests: new Map(['base', 'mail'].map((name) => [name, modules.get(name).manifest])),
+          cronId: rows[0].record_id,
+        });
+      },
       async revokeManagerSessions() {
         for (const session of await listSessions(db, administrator.id, undefined)) {
           await revokeSession(db, administrator.id, session.id);

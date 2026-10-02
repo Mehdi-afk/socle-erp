@@ -259,6 +259,62 @@ describe('web client with real PostgreSQL and browser cookies', () => {
       .toBe(0);
   });
 
+  it('runs the installed reminder cron once, opens the activity and acknowledges it in French and Arabic', async () => {
+    await signIn();
+    expect(new URL(page.url()).origin).toBe(fixture.url);
+    await expect.poll(() => page.title()).toBe('Contact — Socle ERP');
+    await openContacts();
+    await openAtlas();
+    const form = page.getByRole('form', { name: 'Planifier une activité' });
+    await form.getByLabel(/^Objet\b/).fill('Rappel personnel de démonstration');
+    await form.getByLabel(/^Type d’activité/).selectOption({ label: 'Appel' });
+    await form.getByLabel(/^Échéance/).fill('2000-01-01');
+    await form.getByRole('button', { name: 'Planifier pour moi' }).click();
+    await page.getByText('Rappel personnel de démonstration', { exact: true }).waitFor();
+    const runs = await Promise.all([
+      fixture.runActivityReminders(),
+      fixture.runActivityReminders(),
+    ]);
+    expect(runs).toContain('success');
+    expect(runs).not.toContain('failure');
+    await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+    const inbox = page.getByRole('dialog', { name: 'Notifications', exact: true });
+    const entry = inbox.getByRole('button', { name: /Rappel d’activité/ });
+    await entry.first().waitFor();
+    expect(await entry.count()).toBe(1);
+    expect(
+      await inbox.getByText('Rappel personnel de démonstration', { exact: true }).count(),
+    ).toBe(0);
+    await checkAccessibility('mail-reminder-fr', inbox);
+    await inbox.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByText('Préférences', { exact: true }).click();
+    await page.getByLabel('Langue', { exact: true }).selectOption('ar');
+    await page.getByText('التفضيلات', { exact: true }).click();
+    await page.getByRole('button', { name: 'الإشعارات', exact: true }).click();
+    const arabicInbox = page.getByRole('dialog', { name: 'الإشعارات', exact: true });
+    const arabicEntry = arabicInbox.getByRole('button', { name: /تذكير بنشاط/ });
+    await arabicEntry.waitFor();
+    expect(await page.locator('html').getAttribute('dir')).toBe('rtl');
+    expect(
+      await page.evaluate(() => {
+        const html = (
+          globalThis as unknown as {
+            document: { documentElement: { scrollWidth: number; clientWidth: number } };
+          }
+        ).document.documentElement;
+        return html.scrollWidth <= html.clientWidth;
+      }),
+    ).toBe(true);
+    await checkAccessibility('mail-reminder-ar-mobile', arabicInbox);
+    await arabicEntry.click();
+    await arabicInbox.waitFor({ state: 'hidden' });
+    await page.getByText('Rappel personnel de démonstration', { exact: true }).waitFor();
+    expect(await fixture.runActivityReminders()).toBe('success');
+    await page.getByRole('button', { name: 'الإشعارات', exact: true }).click();
+    await page.getByText('لا توجد إشعارات جديدة.', { exact: true }).waitFor();
+  });
+
   it('keeps a message draft through navigation and displays the calendar in Arabic on mobile', async () => {
     await signIn();
     await openContacts();

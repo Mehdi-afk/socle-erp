@@ -39,6 +39,8 @@ export function MailTools({
         empty: 'لا توجد إشعارات جديدة.',
         error: 'تعذر تحميل البيانات.',
         message: 'رسالة جديدة',
+        reminder: 'تذكير بنشاط',
+        notificationDescription: 'المحادثات وتذكيرات الأنشطة',
       }
     : fr
       ? {
@@ -50,6 +52,8 @@ export function MailTools({
           empty: 'Aucune nouvelle notification.',
           error: 'Impossible de charger les données.',
           message: 'Nouvel échange',
+          reminder: 'Rappel d’activité',
+          notificationDescription: 'Échanges et rappels d’activité',
         }
       : {
           notifications: 'Notifications',
@@ -60,6 +64,8 @@ export function MailTools({
           empty: 'No new notifications.',
           error: 'Could not load data.',
           message: 'New conversation',
+          reminder: 'Activity reminder',
+          notificationDescription: 'Conversations and activity reminders',
         };
   const [panel, setPanel] = useState<'notifications' | 'activities'>();
   const [notifications, setNotifications] = useState<readonly ThreadNotification[]>();
@@ -141,7 +147,7 @@ export function MailTools({
               {panel === 'notifications' ? copy.notifications : copy.activities}
             </Dialog.Title>
             <Dialog.Description>
-              {panel === 'notifications' ? copy.message : copy.description}
+              {panel === 'notifications' ? copy.notificationDescription : copy.description}
             </Dialog.Description>
             <div className="web-mail-actions">
               <Button
@@ -176,7 +182,7 @@ export function MailTools({
                           });
                         }}
                       >
-                        {copy.message} ·{' '}
+                        {notification.kind === 'reminder' ? copy.reminder : copy.message} ·{' '}
                         {resolveText(
                           registry.get(notification.model).description,
                           language,

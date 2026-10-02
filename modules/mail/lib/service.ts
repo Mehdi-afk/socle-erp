@@ -212,6 +212,7 @@ export async function scheduleActivity(env: Environment, input: MailTarget, valu
   if (types.length !== 1) throw new ValidationError('Unknown activity type.');
   const created = await technical.model('mail.activity').create({
     ...activity,
+    reminderTimeZone: env.user.tz,
     resModel: target.model,
     resId: target.id,
     assignedUserId: env.user.id,
@@ -319,9 +320,14 @@ export async function exportThread(
     .search([...domainOf(target), ['assignedUserId', '=', env.user.id]]);
   const rows = await messages.read(messageFields);
   filterTracking(env, target.model, rows);
+  const reminders = await technical.model('mail.activity.reminder').search([
+    ['activityId', 'in', activities.ids],
+    ['userId', '=', env.user.id],
+  ]);
   return {
     'mail.messages': rows,
     'mail.activities': await activities.read(activityFields),
+    'mail.reminders': await reminders.read(['id', 'activityId', 'isRead', 'createdAt']),
   };
 }
 
@@ -343,6 +349,22 @@ export async function anonymizeThread(env: Environment, id: string): Promise<voi
     .model('mail.notification')
     .search([['messageId', 'in', messages.ids]]);
   await notifications.unlink();
+  const reminders = await technical
+    .model('mail.activity.reminder')
+    .search([['activityId', 'in', activities.ids]]);
+  await reminders.unlink();
+}
+
+async function reminderTarget(env: Environment, activityId: string): Promise<MailTarget | null> {
+  const [row] = await env
+    .sudo('Resolve own activity reminder without exposing its contents')
+    .model('mail.activity')
+    .browse([activityId])
+    .read(['resModel', 'resId', 'state', 'assignedUserId']);
+  if (!row || row.state !== 'planned' || row.assignedUserId !== env.user.id) return null;
+  const target = { model: String(row.resModel), id: String(row.resId) };
+  await targetOf(env, target);
+  return target;
 }
 
 /** Every notification rechecks current parent rights, so revoked access cannot leak a preview. */
@@ -380,7 +402,28 @@ export async function readNotifications(env: Environment, visibility: MailVisibi
       if (!(error instanceof AccessError) && !(error instanceof MissingRecordError)) throw error;
     }
   }
-  return result;
+  const reminders = await technical.model('mail.activity.reminder').search(
+    [
+      ['userId', '=', env.user.id],
+      ['isRead', '=', false],
+    ],
+    { limit: 100, order: 'id desc' },
+  );
+  for (const reminder of await reminders.read(['id', 'activityId'])) {
+    try {
+      const target = await reminderTarget(env, String(reminder.activityId));
+      if (target)
+        result.push({
+          id: reminder.id,
+          model: target.model,
+          recordId: target.id,
+          kind: 'reminder',
+        });
+    } catch (error) {
+      if (!(error instanceof AccessError) && !(error instanceof MissingRecordError)) throw error;
+    }
+  }
+  return result.sort((a, b) => String(b.id).localeCompare(String(a.id))).slice(0, 100);
 }
 
 export async function markNotificationRead(env: Environment, id: string): Promise<void> {
@@ -395,7 +438,20 @@ export async function markNotificationRead(env: Environment, id: string): Promis
     { limit: 1 },
   );
   const [row] = await found.read(['messageId']);
-  if (!row) throw new MissingRecordError('mail.notification', [notificationId]);
+  if (!row) {
+    const reminders = await technical.model('mail.activity.reminder').search(
+      [
+        ['id', '=', notificationId],
+        ['userId', '=', env.user.id],
+      ],
+      { limit: 1 },
+    );
+    const [reminder] = await reminders.read(['activityId']);
+    if (!reminder || !(await reminderTarget(env, String(reminder.activityId))))
+      throw new MissingRecordError('mail.notification', [notificationId]);
+    await reminders.write({ isRead: true });
+    return;
+  }
   const [message] = await technical
     .model('mail.message')
     .browse([String(row.messageId)])

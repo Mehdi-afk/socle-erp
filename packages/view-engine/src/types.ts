@@ -103,7 +103,7 @@ export interface ThreadNotification {
   readonly id: string;
   readonly model: string;
   readonly recordId: string;
-  readonly kind: 'comment' | 'note' | 'tracking';
+  readonly kind: 'comment' | 'note' | 'tracking' | 'reminder';
 }
 /** A dated event from any module; this initial calendar displays whole-day deadlines. */
 export interface CalendarEvent {

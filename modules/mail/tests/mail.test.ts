@@ -20,6 +20,7 @@ import {
 } from '@socle/framework';
 import { loadModules } from '@socle/runtime';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { reminderDay, remindActivities } from '../lib/reminders.js';
 
 import {
   activityStatus,
@@ -137,6 +138,107 @@ async function fixture(side: 'server' | 'client' = 'server') {
 }
 
 describe('mail conversations and personal activities', () => {
+  it('uses the local deadline day across midnight and DST, with a UTC fallback', () => {
+    expect(reminderDay('2026-10-01T23:30:00.000Z', 'Africa/Algiers')).toBe('2026-10-02');
+    expect(reminderDay('2026-10-02T00:30:00.000Z', 'America/Los_Angeles')).toBe('2026-10-01');
+    expect(reminderDay('2026-10-24T22:30:00.000Z', 'Europe/Paris')).toBe('2026-10-25');
+    expect(reminderDay('2026-10-25T23:30:00.000Z', 'Europe/Paris')).toBe('2026-10-26');
+    expect(reminderDay('2026-10-02T00:30:00.000Z', null)).toBe('2026-10-02');
+    expect(reminderDay('2026-10-02T00:30:00.000Z', 'invalid/zone')).toBe('2026-10-02');
+    expect(() => reminderDay('bad', 'UTC')).toThrow();
+  });
+  it('reminds once at the local deadline, targets only the assignee and never repeats after reading', async () => {
+    const f = await fixture();
+    await scheduleActivity(f.writer, f.target, {
+      summary: 'Private reminder contents',
+      typeId: f.typeId,
+      dueDate: '2026-10-02',
+    });
+    await expect(remindActivities(f.writer)).rejects.toThrow(AccessError);
+    await expect(f.writer.model('mail.activity.reminder').search()).rejects.toThrow(AccessError);
+    expect(await remindActivities(f.seed, '2026-10-01T22:59:00.000Z')).toBe(0);
+    expect(await remindActivities(f.seed, '2026-10-01T23:00:00.000Z')).toBe(1);
+    expect(await remindActivities(f.seed, '2026-10-02T12:00:00.000Z')).toBe(0);
+    const notifications = await readNotifications(f.writer, { internal: true });
+    expect(notifications).toHaveLength(1);
+    expect(typeof notifications[0]?.id).toBe('string');
+    expect(notifications[0]).toMatchObject({
+      model: f.target.model,
+      recordId: f.target.id,
+      kind: 'reminder',
+    });
+    expect(await readNotifications(f.colleague, { internal: true })).toEqual([]);
+    const id = String(notifications[0]?.id);
+    await expect(markNotificationRead(f.colleague, id)).rejects.toThrow(MissingRecordError);
+    await markNotificationRead(f.writer, id);
+    expect(await remindActivities(f.seed, '2026-10-03T12:00:00.000Z')).toBe(0);
+    expect(await readNotifications(f.writer, { internal: true })).toEqual([]);
+  });
+  it('skips future, completed and cancelled activities and hides reminders after revocation or completion', async () => {
+    const f = await fixture();
+    const schedule = (dueDate: string) =>
+      scheduleActivity(f.writer, f.target, {
+        summary: 'Reminder',
+        typeId: f.typeId,
+        dueDate,
+      });
+    const done = await schedule('2026-10-01');
+    const cancelled = await schedule('2026-10-01');
+    await finishActivity(f.writer, f.target, String(done?.id), { state: 'done' });
+    await finishActivity(f.writer, f.target, String(cancelled?.id), { state: 'cancelled' });
+    await schedule('2026-10-04');
+    const due = await schedule('2026-10-02');
+    expect(await remindActivities(f.seed, '2026-10-02T12:00:00.000Z')).toBe(1);
+    const [notification] = await readNotifications(f.writer, { internal: true });
+    const revoked = f.environment({ ...f.user, companyIds: [], companyId: null });
+    expect(await readNotifications(revoked, { internal: true })).toEqual([]);
+    await expect(markNotificationRead(revoked, String(notification?.id))).rejects.toThrow();
+    await finishActivity(f.writer, f.target, String(due?.id), { state: 'done' });
+    expect(await readNotifications(f.writer, { internal: true })).toEqual([]);
+    await expect(markNotificationRead(f.writer, String(notification?.id))).rejects.toThrow(
+      MissingRecordError,
+    );
+  });
+  it('exports own reminders and removes them with contact anonymization', async () => {
+    const f = await fixture();
+    await scheduleActivity(f.writer, f.target, {
+      summary: 'Reminder',
+      typeId: f.typeId,
+      dueDate: '2026-10-02',
+    });
+    await remindActivities(f.seed, '2026-10-02T12:00:00.000Z');
+    const contact = f.writer.model('res.partner').browse([f.target.id]);
+    const exported = await contact.gdprExport();
+    expect(exported.related['mail.reminders']).toHaveLength(1);
+    await contact.gdprAnonymize();
+    expect(await f.seed.model('mail.activity.reminder').search()).toHaveLength(0);
+    expect(await remindActivities(f.seed, '2026-10-03T12:00:00.000Z')).toBe(0);
+  });
+  it('uses UTC for legacy activities and retires orphaned parents without blocking later batches', async () => {
+    const f = await fixture();
+    const legacy = await f.seed.model('mail.activity').create({
+      summary: 'Legacy',
+      typeId: f.typeId,
+      dueDate: '2026-10-02',
+      resModel: f.target.model,
+      resId: f.target.id,
+      assignedUserId: f.user.id,
+    });
+    expect(await remindActivities(f.seed, '2026-10-01T23:30:00.000Z')).toBe(0);
+    expect(await remindActivities(f.seed, '2026-10-02T00:00:00.000Z')).toBe(1);
+    await f.seed.model(f.target.model).browse([f.target.id]).unlink();
+    const orphan = await f.seed.model('mail.activity').create({
+      summary: 'Orphan',
+      typeId: f.typeId,
+      dueDate: '2026-10-02',
+      resModel: f.target.model,
+      resId: f.target.id,
+      assignedUserId: f.user.id,
+    });
+    expect(await remindActivities(f.seed, '2026-10-02T12:00:00.000Z')).toBe(0);
+    expect((await orphan.read(['state']))[0]?.state).toBe('cancelled');
+    expect((await legacy.read(['remindedAt']))[0]?.remindedAt).toBe('2026-10-02T00:00:00.000Z');
+  });
   it('composes with the real base module, preserves field definitions and declares a generic chatter', () => {
     const fixture = fixtureForComposition();
     const views = buildViewRegistry(

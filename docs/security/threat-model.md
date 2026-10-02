@@ -203,7 +203,19 @@ Les routes `/mail/` reprennent le pipeline HTTP, le tenant, la session/CSRF et l
 | E / T | Script dans un message ou brouillon perdu à la navigation | M | Texte borné rendu par React ; brouillons conservés dans les onglets masqués et inclus dans la garde de navigation | 2.4 |
 | I | Données personnelles conservées dans les messages après anonymisation du contact | É | Hook transactionnel après contrôles de conservation de `base`, effacement du texte et du suivi, annulation des activités, retrait des abonnements et notifications ; exception auditée à l’immutabilité | 2.4 |
 
-Tests : `modules/mail/tests/mail.test.ts`, transports et composants, ainsi que `packages/testing/acceptance/src/browser/` avec PostgreSQL et cookies réels. Limites et plafonds : [module mail](../../modules/mail/README.md). Le SMTP, les rappels, les mentions et une réplique filtrée par parent restent à livrer ; aucune intégration externe n’est simulée comme disponible.
+Tests : `modules/mail/tests/mail.test.ts`, transports et composants, ainsi que `packages/testing/acceptance/src/browser/` avec PostgreSQL et cookies réels. Limites et plafonds : [module mail](../../modules/mail/README.md). Le SMTP, les mentions et une réplique filtrée par parent restent à livrer ; aucune intégration externe n’est simulée comme disponible.
+
+### 3.13 Rappels d’activités personnelles (F1, lot 2.4)
+
+Le cron déclaré par `mail` passe par la file pg-boss et le verrou d’exécution existants. Son service exige un environnement serveur privilégié ; aucun appel HTTP utilisateur ne déclenche les rappels. La table privée `mail.activity.reminder` n’est pas synchronisable.
+
+| STRIDE | Menace | Grav. | Mesures livrées | Phase |
+|---|---|---|---|---|
+| T | Double rappel, rappel après achèvement ou marqueur sans notification | M | Verrous parent puis activité, relecture de l’état après verrou, unicité activité/responsable, marqueur et rappel dans la transaction du cron ; test PostgreSQL de panne après insertion et de reprise | 2.4 |
+| I / E | Accès au rappel d’un autre responsable ou d’un parent devenu inaccessible | É | Identité serveur, responsable revérifié, droits actuels du parent à la lecture et à l’acquittement, aucun extrait ni objet de l’activité dans le résultat | 2.4 |
+| I | Conservation après anonymisation ou réplication générique | É | Export des seuls rappels personnels, suppression par le hook RGPD transactionnel, table privée sans ACL et sans synchronisation | 2.4 |
+
+Tests : échéances et changement d’heure dans `modules/mail/tests/mail.test.ts`, concurrence et rollback dans `packages/testing/acceptance/src/mail-reminders.test.ts`, consultation/acquittement FR et AR mobile dans la suite navigateur. Limites : 500 candidats par passage, fuseau enregistré à la planification (UTC pour les anciennes activités), consultation sur ouverture/actualisation, aucun push ni envoi externe.
 
 ## 4. Risques résiduels suivis
 
