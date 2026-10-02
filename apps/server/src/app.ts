@@ -9,6 +9,7 @@ import {
   AccessError,
   canSeeField,
   createEnvironment,
+  createRegistrySnapshot,
   DomainError,
   effectiveGroups,
   FieldValueError,
@@ -191,6 +192,7 @@ const passwordText = z.string().min(1).max(1024);
 const changeBody = z.object({ current: passwordText, next: passwordText }).strict();
 const forgotBody = z.object({ login: z.string().min(1).max(254) }).strict();
 const resetBody = z.object({ token: z.string().length(43), password: passwordText }).strict();
+const metadataBody = z.object({}).strict();
 
 /** Field-level visibility (`groups` on fields) of a user, for RPC and synchronisation. */
 const fieldVisibility =
@@ -628,6 +630,21 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     }
     await journal(request, { userId, kind: 'password_reset', details: {} });
     return { ok: true };
+  });
+
+  // Metadata is projected for the authenticated user on every request. Only the composed
+  // registries are shared by a tenant; a user's visible models, fields and views never are.
+  app.post('/web/metadata', async (request, reply) => {
+    metadataBody.parse(request.body);
+    const tenant = tenantOf(request);
+    const user = await userOf(request);
+    void reply.header('cache-control', 'no-store');
+    return createRegistrySnapshot({
+      registry: tenant.registry,
+      ...(tenant.views === undefined ? {} : { views: tenant.views }),
+      security: tenant.security,
+      user,
+    });
   });
 
   // ─── RPC ─────────────────────────────────────────────────────────────────────────────

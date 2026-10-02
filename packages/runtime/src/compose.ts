@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// What a set of installed modules becomes at run time: the model registry, the security policy
-// (views composed too, to fail early), and the data each module loads.
+// What a set of installed modules becomes at run time: model and view registries, the security
+// policy, and the data each module loads.
 import {
   buildModelRegistry,
   buildSecurityPolicy,
@@ -11,12 +11,14 @@ import {
   type ModuleData,
   type ModuleManifest,
   type SecurityPolicy,
+  type ViewRegistry,
 } from '@socle/framework';
 
 import type { ModuleSet } from './loader.js';
 
 export interface Composition {
   readonly registry: ModelRegistry;
+  readonly views: ViewRegistry;
   readonly security: SecurityPolicy;
   /** Manifests of the installed modules (their runtime capabilities). */
   readonly manifests: ReadonlyMap<string, ModuleManifest>;
@@ -36,12 +38,13 @@ export function compose(set: ModuleSet, modules: readonly string[]): Composition
     loaded.map((m) => m.security),
     (model) => registry.has(model),
   );
-  buildViewRegistry(
+  const views = buildViewRegistry(
     loaded.map((m) => m.views),
     registry,
   );
   return {
     registry,
+    views,
     security,
     manifests: new Map(loaded.map((m) => [m.manifest.name, m.manifest])),
   };

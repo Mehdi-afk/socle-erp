@@ -229,6 +229,14 @@ export function createPackageIndex(input: {
 }): Promise<ModulePackageIndex>;
 
 // @public
+export function createRegistrySnapshot(options: {
+    readonly registry: ModelRegistry;
+    readonly views?: ViewRegistry;
+    readonly security: SecurityPolicy;
+    readonly user: UserContext;
+}): RegistrySnapshot;
+
+// @public
 export function createTrustStore(marketplaceKeys: Readonly<Record<string, string>>): Promise<TrustStore>;
 
 // @public
@@ -443,12 +451,27 @@ export interface FieldDefinition extends CommonFieldOptions {
 export type FieldDefinitions = Readonly<Record<string, FieldDefinition>>;
 
 // @public
+export interface FieldMetadata extends Pick<FieldDefinition, 'type' | 'label' | 'help' | 'required' | 'readonly' | 'size' | 'selection' | 'comodel' | 'inverse' | 'digits' | 'currencyField' | 'sensitive'> {
+    readonly stored?: boolean;
+}
+
+// @public
 export class FieldNotLoadedError extends SocleError {
     constructor(model: string, field: string);
 }
 
 // @public
 export type FieldResolver = (model: string, field: string) => FieldDefinition | undefined;
+
+// @public
+export interface FieldSnapshot extends FieldMetadata {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly readonly: boolean;
+    // (undocumented)
+    readonly stored: boolean;
+}
 
 // @public
 export type FieldsOf<D> = D extends TypedModelDefinition<string, infer F> ? FieldValues<F> : never;
@@ -526,6 +549,23 @@ export interface HttpClientOptions {
     readonly maxResponseBytes?: number | undefined;
 }
 
+// @public
+export interface HydratedRegistrySnapshot {
+    // (undocumented)
+    readonly companyId: string | null;
+    // (undocumented)
+    readonly permissions: ReadonlyMap<string, ModelPermissions>;
+    // (undocumented)
+    readonly registry: ModelCatalog;
+    // (undocumented)
+    readonly userId: string;
+    // (undocumented)
+    readonly views: ViewCatalog;
+}
+
+// @public
+export function hydrateRegistrySnapshot(snapshot: RegistrySnapshot): HydratedRegistrySnapshot;
+
 // @public (undocumented)
 export class IncompatibleEngineError extends SocleError {
     constructor(moduleName: string, range: string, coreVersion: string);
@@ -584,6 +624,9 @@ export function isSafeRelativePath(path: string): boolean;
 
 // @public
 export function isStoredColumn(definition: FieldDefinition): boolean;
+
+// @public
+export function isStoredMetadata(field: FieldMetadata): boolean;
 
 // @public
 export function isUserValue(value: unknown): value is UserValue;
@@ -673,6 +716,18 @@ export class MissingDependencyError extends SocleError {
 // @public
 export class MissingRecordError extends SocleError {
     constructor(model: string, ids: readonly string[]);
+}
+
+// @public
+export interface ModelCatalog {
+    // (undocumented)
+    field(model: string, field: string): FieldMetadata | undefined;
+    // (undocumented)
+    get(model: string): ModelMetadata;
+    // (undocumented)
+    has(model: string): boolean;
+    // (undocumented)
+    names(): readonly string[];
 }
 
 // @public
@@ -783,6 +838,30 @@ export interface ModelMeta {
 }
 
 // @public
+export interface ModelMetadata {
+    // (undocumented)
+    readonly abstract: boolean;
+    // (undocumented)
+    readonly description?: LocalizedText | undefined;
+    // (undocumented)
+    readonly fields: ReadonlyMap<string, FieldMetadata>;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly order: readonly OrderTerm[];
+}
+
+// @public
+export interface ModelPermissions {
+    // (undocumented)
+    readonly create: boolean;
+    // (undocumented)
+    readonly unlink: boolean;
+    // (undocumented)
+    readonly write: boolean;
+}
+
+// @public
 export interface ModelRegistry {
     field(model: string, field: string): FieldDefinition | undefined;
     // (undocumented)
@@ -793,6 +872,20 @@ export interface ModelRegistry {
     names(): readonly string[];
     // (undocumented)
     readonly side: RuntimeSide;
+}
+
+// @public
+export interface ModelSnapshot {
+    // (undocumented)
+    readonly description?: LocalizedText | undefined;
+    // (undocumented)
+    readonly fields: readonly FieldSnapshot[];
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly order: readonly OrderTerm[];
+    // (undocumented)
+    readonly permissions: ModelPermissions;
 }
 
 // @public
@@ -987,6 +1080,9 @@ export function parseManifest(value: unknown): ModuleManifest;
 export function parseOrder(model: string, order: string, fields: ReadonlyMap<string, FieldDefinition>): OrderTerm[];
 
 // @public
+export function parseRegistrySnapshot(value: unknown): RegistrySnapshot;
+
+// @public
 export function parseSelector(selector: string): SelectorStep[];
 
 // @public
@@ -1042,6 +1138,20 @@ export type RecordValues = Readonly<Record<string, unknown>>;
 
 // @public
 export function ref(externalId: string): ExternalRef;
+
+// @public
+export interface RegistrySnapshot {
+    // (undocumented)
+    readonly companyId: string | null;
+    // (undocumented)
+    readonly models: readonly ModelSnapshot[];
+    // (undocumented)
+    readonly userId: string;
+    // (undocumented)
+    readonly version: 1;
+    // (undocumented)
+    readonly views: readonly ViewSnapshot[];
+}
 
 // @public
 export interface RelationalField<T extends 'many2one' | 'one2many' | 'many2many', C extends string> extends TypedField<T> {
@@ -1431,6 +1541,16 @@ export type ViewAttribute = string | number | boolean | null | readonly string[]
 // @public (undocumented)
 export type ViewAttributes = Readonly<Record<string, ViewAttribute>>;
 
+// @public
+export interface ViewCatalog {
+    // (undocumented)
+    default(model: string, type: 'form' | 'list'): ViewSnapshot | undefined;
+    // (undocumented)
+    get(id: string): ViewSnapshot;
+    // (undocumented)
+    ids(): readonly string[];
+}
+
 // @public (undocumented)
 export interface ViewChange {
     readonly at: string;
@@ -1491,6 +1611,20 @@ export interface ViewRegistry {
     get(id: string): ComposedView;
     // (undocumented)
     ids(): readonly string[];
+}
+
+// @public
+export interface ViewSnapshot {
+    // (undocumented)
+    readonly arch: ViewNode;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly model: string;
+    // (undocumented)
+    readonly priority: number;
+    // (undocumented)
+    readonly type: 'form' | 'list';
 }
 
 // @public

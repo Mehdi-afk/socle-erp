@@ -4,7 +4,12 @@
 // input and back, and what is wrong with what the user typed. Pure, so that it is tested without any
 // rendering. Amounts are typed in the currency's units and stored as integers of its smallest unit,
 // through exact decimal arithmetic (never a floating-point multiplication).
-import { emptyValue, isStoredColumn, normalizeValue, type FieldDefinition } from '@socle/framework';
+import {
+  emptyValue,
+  isStoredMetadata,
+  normalizeValue,
+  type FieldDefinition,
+} from '@socle/framework';
 
 import type { Currency } from './format.js';
 import { minorToDecimal } from './format.js';
@@ -44,16 +49,18 @@ const EDITABLE_TYPES: ReadonlySet<string> = new Set([
  */
 export function isEditable(field: FormField, currency: Currency | undefined): boolean {
   const { definition } = field;
+  // A full local ORM registry also carries these protections; remote metadata uses readonly.
+  const original: FieldDefinition = definition;
   if (
     field.readonly === true ||
     definition.readonly === true ||
-    definition.compute !== undefined ||
-    definition.related !== undefined ||
+    original.compute !== undefined ||
+    original.related !== undefined ||
     definition.sensitive === true ||
     field.sensitive
   )
     return false;
-  if (!isStoredColumn(definition) || !EDITABLE_TYPES.has(definition.type)) return false;
+  if (!isStoredMetadata(definition) || !EDITABLE_TYPES.has(definition.type)) return false;
   return (
     definition.type !== 'monetary' || (currency !== undefined && validDecimals(currency.decimals))
   );

@@ -18,6 +18,8 @@ import { randomBytes } from 'node:crypto';
 import {
   createAccessControl,
   createEnvironment,
+  createRegistrySnapshot,
+  hydrateRegistrySnapshot,
   type Environment,
   type ModelRegistry,
   type SecurityPolicy,
@@ -238,9 +240,69 @@ describe('module base', () => {
       const resolved = await source.resolve(tenantName);
       expect(resolved?.modules).toEqual(['base']);
       expect(resolved?.registry.has('res.partner')).toBe(true);
+      expect(resolved?.views.default('res.partner', 'form')?.model).toBe('res.partner');
       expect(resolved?.connectionString).toContain(tenantDatabase(tenantName));
+      if (!resolved) throw new Error('The installed base tenant was not found.');
+      const administrator: UserContext = {
+        id: 'metadata-admin',
+        groupIds: ['base.group_system'],
+        companyIds: [],
+        companyId: null,
+        lang: 'fr',
+        tz: 'UTC',
+      };
+      const metadata = hydrateRegistrySnapshot(
+        createRegistrySnapshot({ ...resolved, user: administrator }),
+      );
+      expect(metadata.views.ids()).toEqual([
+        'base.company_form',
+        'base.company_list',
+        'base.config_parameter_list',
+        'base.country_list',
+        'base.currency_list',
+        'base.partner_form',
+        'base.partner_list',
+        'base.users_form',
+        'base.users_list',
+      ]);
+      expect(metadata.registry.has('res.partner')).toBe(true);
+      expect(metadata.registry.field('res.users', 'name')).toMatchObject({ type: 'char' });
+      expect(metadata.registry.field('res.users', 'companyId')).toMatchObject({
+        type: 'many2one',
+        comodel: 'res.company',
+        required: true,
+      });
+      expect(metadata.permissions.get('res.users')).toEqual({
+        create: true,
+        write: true,
+        unlink: true,
+      });
+      expect(metadata.permissions.get('ir.rule')).toEqual({
+        create: false,
+        write: false,
+        unlink: false,
+      });
+      const employee = hydrateRegistrySnapshot(
+        createRegistrySnapshot({
+          ...resolved,
+          user: { ...administrator, id: 'metadata-employee', groupIds: ['base.group_user'] },
+        }),
+      );
+      expect(employee.views.ids()).toEqual(
+        metadata.views.ids().filter((id) => id !== 'base.config_parameter_list'),
+      );
+      expect(employee.registry.has('ir.config_parameter')).toBe(false);
+      expect(employee.registry.has('ir.rule')).toBe(false);
+      expect(employee.permissions.get('res.users')).toEqual({
+        create: false,
+        write: false,
+        unlink: false,
+      });
+      expect(employee.registry.field('res.users', 'login')?.readonly).toBe(true);
+      expect(employee.registry.field('res.partner', 'name')?.readonly).toBe(false);
       // The composition of a set of modules is computed once.
-      expect((await source.resolve(tenantName))?.registry).toBe(resolved?.registry);
+      expect((await source.resolve(tenantName))?.registry).toBe(resolved.registry);
+      expect((await source.resolve(tenantName))?.views).toBe(resolved.views);
       expect(await source.resolve('nobody-here')).toBeUndefined();
       expect(await source.resolve('Not A Tenant')).toBeUndefined();
     } finally {

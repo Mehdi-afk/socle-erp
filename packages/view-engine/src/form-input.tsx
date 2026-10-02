@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-import { isStoredColumn } from '@socle/framework';
+import { isStoredMetadata } from '@socle/framework';
 import { Button, Checkbox, SelectField, TextField } from '@socle/ui';
 import { useEffect, useId, useState } from 'react';
 
@@ -156,7 +156,7 @@ function RelatedInput({
       name !== 'id' &&
       definition.type === 'char' &&
       definition.sensitive !== true &&
-      isStoredColumn(definition),
+      isStoredMetadata(definition),
   );
   const searchField = searchable.find(([name]) => name === 'name')?.[0] ?? searchable[0]?.[0];
   const [query, setQuery] = useState('');

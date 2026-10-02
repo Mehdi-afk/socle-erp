@@ -3,9 +3,15 @@
 import {
   buildModelRegistry,
   buildSecurityPolicy,
+  buildViewRegistry,
   defineModel,
+  defineView,
   extendModel,
+  extendView,
   f,
+  field,
+  group,
+  list,
 } from '@socle/framework';
 import { applySchema } from '@socle/orm-pg';
 import { loadModules } from '@socle/runtime';
@@ -33,7 +39,10 @@ export interface FetchCall {
 }
 
 /** Keep the established module-installation harness, adding only fixtures specific to this test. */
-async function installRpcTenant(pgUrl: string): Promise<InstalledTenant> {
+async function installRpcTenant(
+  pgUrl: string,
+  tenant: 'acme' | 'globex',
+): Promise<InstalledTenant> {
   const installed = await installTenant(pgUrl);
   try {
     const set = await loadModules([MODULES]);
@@ -43,20 +52,66 @@ async function installRpcTenant(pgUrl: string): Promise<InstalledTenant> {
       {
         module: 'rpc_test',
         models: [
-          defineModel({ name: 'rpc.currency', fields: { code: f.char({ required: true }) } }),
+          defineModel({
+            name: 'res.currency',
+            fields: { code: f.char({ required: true }), decimals: f.integer({ default: 2 }) },
+          }),
+          defineModel({ name: `rpc.${tenant}_only`, fields: { name: f.char() } }),
           extendModel('acc.partner', {
             fields: {
               companyId: f.char(),
               amount: f.monetary(),
-              currencyId: f.many2one('rpc.currency'),
+              currencyId: f.many2one('res.currency'),
               internalMargin: f.integer({ groups: ['rpc_test.group_manager'] }),
+              computedName: f.char({ compute: 'computeName', depends: ['name'] }),
             },
+            methods: (Base) =>
+              class extends Base {
+                computeName(): void {
+                  const name = this.mapped('name')[0];
+                  this.computedName = typeof name === 'string' ? name.toUpperCase() : '';
+                }
+              },
           }),
         ],
       },
     ];
     const serverRegistry = buildModelRegistry(models, { side: 'server' });
     const clientRegistry = buildModelRegistry(models, { side: 'client' });
+    const views = buildViewRegistry(
+      [
+        ...loaded.map((module) => module.views),
+        {
+          module: 'rpc_test',
+          views: [
+            extendView('acc_base.partner_form', [
+              {
+                at: "group[name='main']",
+                position: 'inside',
+                nodes: [
+                  field('computedName'),
+                  group({ name: 'manager', groups: ['rpc_test.group_manager'] }, [
+                    field('internalMargin'),
+                  ]),
+                ],
+              },
+            ]),
+            defineView({
+              id: 'rpc_test.partner_list',
+              model: 'acc.partner',
+              type: 'list',
+              arch: list([
+                field('name'),
+                field('city'),
+                field('internalMargin'),
+                field('computedName'),
+              ]),
+            }),
+          ],
+        },
+      ],
+      serverRegistry,
+    );
     const security = buildSecurityPolicy(
       [
         ...loaded.map((module) => module.security),
@@ -68,16 +123,21 @@ async function installRpcTenant(pgUrl: string): Promise<InstalledTenant> {
               name: { fr: 'Gestionnaire de test' },
               implies: ['acc_base.group_user'],
             },
+            { id: 'rpc_test.group_viewer', name: { fr: 'Lecture seule de test' } },
           ],
           access: [
             {
-              model: 'rpc.currency',
+              model: 'res.currency',
               group: 'acc_base.group_user',
               read: true,
               create: true,
               write: true,
               unlink: true,
             },
+            { model: 'acc.partner', group: 'rpc_test.group_viewer', read: true },
+            { model: 'res.currency', group: 'rpc_test.group_viewer', read: true },
+            { model: `rpc.${tenant}_only`, group: 'acc_base.group_user', read: true },
+            { model: `rpc.${tenant}_only`, group: 'rpc_test.group_viewer', read: true },
           ],
           rules: [
             {
@@ -105,7 +165,19 @@ async function installRpcTenant(pgUrl: string): Promise<InstalledTenant> {
         FAST,
       );
     }
-    return { ...installed, serverRegistry, clientRegistry, security };
+    await createUser(
+      installed.db,
+      {
+        id: 'web-viewer',
+        login: 'viewer@web.test',
+        password: PASSWORD,
+        groupIds: ['rpc_test.group_viewer'],
+        companyIds: [FIRST_COMPANY],
+        companyId: FIRST_COMPANY,
+      },
+      FAST,
+    );
+    return { ...installed, serverRegistry, clientRegistry, views, security };
   } catch (error) {
     await installed.db.destroy();
     throw error;
@@ -113,10 +185,10 @@ async function installRpcTenant(pgUrl: string): Promise<InstalledTenant> {
 }
 
 export async function createWebRpcFixture(pgUrl: string) {
-  const acme = await installRpcTenant(pgUrl);
+  const acme = await installRpcTenant(pgUrl, 'acme');
   let globex: InstalledTenant;
   try {
-    globex = await installRpcTenant(pgUrl);
+    globex = await installRpcTenant(pgUrl, 'globex');
   } catch (error) {
     await acme.db.destroy();
     throw error;
@@ -130,6 +202,7 @@ export async function createWebRpcFixture(pgUrl: string) {
           : {
               connectionString: found.connectionString,
               registry: found.serverRegistry,
+              views: found.views,
               security: found.security,
             },
       );
@@ -149,12 +222,23 @@ export async function createWebRpcFixture(pgUrl: string) {
     await Promise.all([acme.db.destroy(), globex.db.destroy()]);
   };
 
-  const signIn = async (host: string, manager = false): Promise<BrowserSession> => {
+  const signIn = async (
+    host: string,
+    manager: boolean | 'viewer' = false,
+  ): Promise<BrowserSession> => {
     const response = await app.inject({
       method: 'POST',
       url: '/auth/login',
       headers: { host: `${host}.erp.test`, origin: `https://${host}.erp.test` },
-      payload: { login: manager ? 'manager@web.test' : 'reader@web.test', password: PASSWORD },
+      payload: {
+        login:
+          manager === 'viewer'
+            ? 'viewer@web.test'
+            : manager
+              ? 'manager@web.test'
+              : 'reader@web.test',
+        password: PASSWORD,
+      },
     });
     expect(response.statusCode).toBe(200);
     const body = response.json<{ csrfToken: string }>();
@@ -234,6 +318,7 @@ export async function createWebRpcFixture(pgUrl: string) {
   try {
     const reader = await signIn('acme');
     const manager = await signIn('acme', true);
+    const viewer = await signIn('acme', 'viewer');
     const other = await signIn('globex', true);
     const createdIds = (value: unknown): string[] => {
       const ids = (value as { ids: string[] }).ids;
@@ -246,7 +331,7 @@ export async function createWebRpcFixture(pgUrl: string) {
       return id;
     };
     const currencyId = firstId(
-      await rpc('acme', manager, 'rpc.currency', 'create', { values: { code: 'DZD' } }),
+      await rpc('acme', manager, 'res.currency', 'create', { values: { code: 'DZD' } }),
     );
     const [alphaId, betaId, hiddenId, editId] = createdIds(
       await rpc('acme', manager, 'acc.partner', 'create', {
@@ -281,6 +366,7 @@ export async function createWebRpcFixture(pgUrl: string) {
       globex,
       reader,
       manager,
+      viewer,
       other,
       currencyId,
       alphaId,

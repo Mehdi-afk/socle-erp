@@ -2,7 +2,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { exportPublicKey, generateSigningKeyPair, uuidv7 } from '@socle/crypto';
-import { buildModelRegistry, buildSecurityPolicy, defineModel, f } from '@socle/framework';
+import {
+  buildModelRegistry,
+  buildSecurityPolicy,
+  defineModel,
+  f,
+  type RegistrySnapshot,
+} from '@socle/framework';
 import { applySchema, createPgDatabase, verifyAudit, type Executor } from '@socle/orm-pg';
 import { signDeviceStatus, signMutation } from '@socle/sync';
 import { sql } from 'kysely';
@@ -249,6 +255,33 @@ describe('HTTP server', () => {
     const codes = [];
     for (let i = 0; i < 4; i++) codes.push((await request('GET', '/sync/pull')).statusCode);
     expect(codes).toEqual([401, 401, 401, 429]);
+  });
+
+  it('validates a metadata request before authentication and requires session CSRF without caching', async () => {
+    const { request, signIn } = await server();
+    expect((await request('POST', '/web/metadata', { body: { userId: 'bob' } })).statusCode).toBe(
+      400,
+    );
+    expect((await request('POST', '/web/metadata', { body: {} })).statusCode).toBe(401);
+    const cookie = await signIn('alice@acme.test', 'alice-pass');
+    expect((await request('POST', '/web/metadata', { cookie, body: null })).statusCode).toBe(400);
+    const missingCsrf = await request('POST', '/web/metadata', {
+      cookie,
+      body: {},
+      headers: { 'x-csrf-token': '' },
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(missingCsrf.json()).toMatchObject({ error: 'csrf' });
+    const response = await request('POST', '/web/metadata', { cookie, body: {} });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    const snapshot = response.json<RegistrySnapshot>();
+    expect(snapshot).toMatchObject({ version: 1, userId: 'alice', companyId: C1, views: [] });
+    expect(
+      snapshot.models
+        .find((model) => model.name === 'srv.invoice')
+        ?.fields.map((field) => field.name),
+    ).not.toContain('margin');
   });
 
   it('authenticates with sessions, the same error for every failure and a lock-out', async () => {

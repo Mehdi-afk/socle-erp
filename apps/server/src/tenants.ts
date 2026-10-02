@@ -7,6 +7,7 @@ import {
   type AccessControl,
   type ModelRegistry,
   type SecurityPolicy,
+  type ViewRegistry,
 } from '@socle/framework';
 import { createPgDatabase, type Executor } from '@socle/orm-pg';
 
@@ -33,6 +34,7 @@ export interface TenantRuntime {
   readonly name: string;
   readonly db: Executor;
   readonly registry: ModelRegistry;
+  readonly views?: ViewRegistry;
   readonly security: SecurityPolicy;
   readonly access: AccessControl;
 }
@@ -49,6 +51,7 @@ export interface TenantSource {
     | {
         readonly connectionString: string;
         readonly registry: ModelRegistry;
+        readonly views?: ViewRegistry;
         readonly security: SecurityPolicy;
       }
     | undefined
@@ -95,6 +98,7 @@ export function createTenantDirectory(
                 applicationName: `socle:${name}`,
               }),
               registry: found.registry,
+              ...(found.views === undefined ? {} : { views: found.views }),
               security: found.security,
               access: createAccessControl(found.security, found.registry),
             }

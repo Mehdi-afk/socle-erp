@@ -4,7 +4,7 @@
 // number of records: the data source is asked for pages as the user scrolls, and rows that have not
 // arrived yet are grey bars. Header cells sort, a checkbox column selects, the keyboard moves
 // between rows, and the density (48 or 32 px per row) is the user's.
-import { isStoredColumn, type ViewNode } from '@socle/framework';
+import type { ViewNode } from '@socle/framework';
 import { Button, EmptyState, Skeleton } from '@socle/ui';
 import { ArrowDown, ArrowUp, ArrowUpDown, Inbox } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -481,7 +481,7 @@ export function ListView({
                 role="columnheader"
                 aria-sort={column.sortable ? sortState(order, column.name) : undefined}
               >
-                {column.sortable && isStoredColumn(column.definition) ? (
+                {column.sortable ? (
                   <button
                     type="button"
                     className="ve-sort"

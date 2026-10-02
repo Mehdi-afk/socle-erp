@@ -3,7 +3,7 @@
 // What the view engine needs from the outside. It knows the models (the registry of the framework)
 // and asks a data source for records; it does not know where they come from: the server over HTTP,
 // the local database of an offline device, or a list in memory in a test.
-import type { ModelRegistry } from '@socle/framework';
+import type { ModelCatalog } from '@socle/framework';
 
 /** A record as the engine receives it: its `id` and the values of the fields asked for. */
 export interface RecordValues {
@@ -59,7 +59,7 @@ export type Density = 'comfortable' | 'compact';
 
 /** The user and the application around a view. */
 export interface ViewContext {
-  readonly registry: ModelRegistry;
+  readonly registry: ModelCatalog;
   readonly data: DataSource;
   /** BCP 47 tag: `fr`, `en`, `ar`. */
   readonly language: string;
