@@ -21,6 +21,7 @@
     "@simplewebauthn/server": "14.0.2",
     "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
+    "@socle/module-mail": "workspace:*",
     "@socle/orm-pg": "workspace:*",
     "@socle/runtime": "workspace:*",
     "@socle/sync": "workspace:*",

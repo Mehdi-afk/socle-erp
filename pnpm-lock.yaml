@@ -197,6 +197,9 @@ importers:
       '@socle/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@socle/module-mail':
+        specifier: workspace:*
+        version: link:../../modules/mail
       '@socle/orm-pg':
         specifier: workspace:*
         version: link:../../packages/orm-pg
@@ -315,6 +318,25 @@ importers:
         specifier: workspace:*
         version: link:../../packages/framework
     devDependencies:
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+
+  modules/mail:
+    dependencies:
+      '@socle/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@socle/module-base':
+        specifier: workspace:*
+        version: link:../base
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@socle/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6

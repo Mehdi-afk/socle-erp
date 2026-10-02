@@ -37,6 +37,7 @@ const NODE_TYPES = new Set<string>([
   'page',
   'field',
   'button',
+  'chatter',
   'filter',
   'separator',
   'label',
@@ -314,6 +315,11 @@ function validate(view: ComposedView, models: ModelRegistry): void {
   const walk = (current: ViewNode, model: string): void => {
     if (!NODE_TYPES.has(current.type)) fail(`unknown node type "${current.type}".`);
     const meta = models.get(model);
+    if (
+      current.type === 'chatter' &&
+      (!meta.mixins.includes('mail.thread') || current.children.length > 0)
+    )
+      fail('chatter needs mail.thread and cannot have children.');
     let childModel = model;
     const name = current.attrs.name;
     if (current.type === 'field') {

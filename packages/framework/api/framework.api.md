@@ -11,6 +11,7 @@ import { SigningPublicKey } from '@socle/crypto';
 export interface AccessControl {
     // (undocumented)
     checkModel(env: Environment, model: string, operation: Operation): void;
+    hasGroup?(env: Environment, group: string): boolean;
     ruleDomain(env: Environment, model: string, operation: Operation): DomainNode;
 }
 
@@ -337,6 +338,7 @@ export class Environment {
     constructor(key: symbol, options: EnvironmentOptions, state: unknown, su: boolean);
     get companyId(): string | null;
     flush(): Promise<void>;
+    hasGroup(group: string): boolean;
     model<M extends string>(name: M): RecordsetOf<M>;
     nextValue(counter: string, options?: {
         readonly start?: number;
@@ -1093,6 +1095,8 @@ export class Recordset {
     // (undocumented)
     [Symbol.iterator](): Iterator<this>;
     constructor(env: Environment, ids: readonly string[]);
+    afterAnonymize(): Promise<void>;
+    afterWrite(changes: readonly WriteChange[]): Promise<void>;
     browse(ids: readonly string[]): this;
     create(values: RecordValues | readonly RecordValues[]): Promise<this>;
     // (undocumented)
@@ -1632,6 +1636,17 @@ export type ViewType = 'form' | 'list' | 'kanban' | 'calendar' | 'pivot' | 'grap
 
 // @public
 export function visibleArch(view: ComposedView, groups: ReadonlySet<string>, models: ModelRegistry): ViewNode;
+
+// @public
+export interface WriteChange {
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly values: Readonly<Record<string, {
+        readonly before: unknown;
+        readonly after: unknown;
+    }>>;
+}
 
 // (No @packageDocumentation comment for this package)
 

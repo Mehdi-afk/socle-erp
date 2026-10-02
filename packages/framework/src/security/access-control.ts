@@ -17,6 +17,7 @@ export function createAccessControl(
 ): AccessControl {
   const resolve = (model: string, field: string) => registry.field(model, field);
   return {
+    hasGroup: (env, group) => effectiveGroups(policy, env.user.groupIds).has(group),
     checkModel(env: Environment, model: string, operation: Operation): void {
       const groups = effectiveGroups(policy, env.user.groupIds);
       if (!canAccessModel(policy, groups, model, operation)) {

@@ -12,6 +12,7 @@ export default defineConfig({
       '/auth/': { target: 'http://127.0.0.1:8069' },
       '/web/metadata': { target: 'http://127.0.0.1:8069' },
       '/rpc/': { target: 'http://127.0.0.1:8069' },
+      '/mail/': { target: 'http://127.0.0.1:8069' },
     },
   },
 });

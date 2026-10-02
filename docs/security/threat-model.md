@@ -190,6 +190,21 @@ Tests : transport, WebAuthn et écrans dans `apps/web/src/`, notamment remplacem
 
 Limites : les tests de passkey simulent l’authentificateur natif et ne remplacent pas la validation avec un appareil physique ; les callbacks OIDC sont testés sans fournisseur externe. Le client reste en ligne, sans persistance des brouillons ni réplique locale. Le déploiement devra fournir une politique CSP HTML adaptée aux fichiers statiques sous la même origine HTTPS ; les en-têtes API ne sont pas affaiblis par ce lot.
 
+### 3.12 Conversations et activités (F1, premier lot 2.4)
+
+Les routes `/mail/` reprennent le pipeline HTTP, le tenant, la session/CSRF et la transaction auditée. Les tables privées refusent les RPC génériques ; les services utilisent un `sudo` motivé seulement après vérification des droits sur le parent.
+
+| STRIDE | Menace | Grav. | Mesures livrées | Phase |
+|---|---|---|---|---|
+| I / E | Accès à un fil d’une autre société ou par un identifiant arbitraire | É | Parent réel portant `mail.thread`, recherche sous ACL et règles courantes avant chaque opération ; aucun accès RPC direct aux tables privées ; réplique générique désactivée | 2.4 |
+| S / T | Auteur, société, responsable ou abonné usurpé | É | Identités et société dérivées côté serveur ; schémas stricts sans ces paramètres ; activités et abonnements personnels | 2.4 |
+| I | Note interne ou valeur confidentielle dans le suivi, l’export ou une notification | É | Groupes effectifs exigés pour les notes ; exclusion des champs sensibles, restreints et relationnels à l’écriture et à la lecture/export ; notification sans extrait, droits du parent revérifiés | 2.4 |
+| T | Double achèvement ou message séparé d’une écriture échouée | M | Verrou du parent, transition depuis `planned` uniquement, message et notification dans la même transaction ; hook après validation ; aucun rejeu automatique côté client | 2.4 |
+| E / T | Script dans un message ou brouillon perdu à la navigation | M | Texte borné rendu par React ; brouillons conservés dans les onglets masqués et inclus dans la garde de navigation | 2.4 |
+| I | Données personnelles conservées dans les messages après anonymisation du contact | É | Hook transactionnel après contrôles de conservation de `base`, effacement du texte et du suivi, annulation des activités, retrait des abonnements et notifications ; exception auditée à l’immutabilité | 2.4 |
+
+Tests : `modules/mail/tests/mail.test.ts`, transports et composants, ainsi que `packages/testing/acceptance/src/browser/` avec PostgreSQL et cookies réels. Limites et plafonds : [module mail](../../modules/mail/README.md). Le SMTP, les rappels, les mentions et une réplique filtrée par parent restent à livrer ; aucune intégration externe n’est simulée comme disponible.
+
 ## 4. Risques résiduels suivis
 
 | # | Risque | Traitement |

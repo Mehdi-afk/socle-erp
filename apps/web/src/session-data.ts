@@ -6,6 +6,10 @@ import { RpcDataError } from './rpc-errors.js';
 
 /** A stable adapter reports terminal session failures even when the view catches its read/write error. */
 export function watchSession(source: RpcDataSource, onExpired: () => void): DataSource {
+  const thread = source.thread;
+  const notifications = thread?.notifications?.bind(thread);
+  const seen = thread?.seen?.bind(thread);
+  const activities = thread?.activities?.bind(thread);
   let notified = false;
   async function watch<T>(work: Promise<T>): Promise<T> {
     try {
@@ -23,6 +27,21 @@ export function watchSession(source: RpcDataSource, onExpired: () => void): Data
     }
   }
   return {
+    ...(thread === undefined
+      ? {}
+      : {
+          thread: {
+            ...(notifications === undefined ? {} : { notifications: () => watch(notifications()) }),
+            ...(seen === undefined ? {} : { seen: (id) => watch(seen(id)) }),
+            ...(activities === undefined ? {} : { activities: () => watch(activities()) }),
+            read: (model, id, before) => watch(thread.read(model, id, before)),
+            post: (model, id, body, kind) => watch(thread.post(model, id, body, kind)),
+            follow: (model, id, following) => watch(thread.follow(model, id, following)),
+            schedule: (model, id, activity) => watch(thread.schedule(model, id, activity)),
+            finish: (model, id, activityId, state, feedback) =>
+              watch(thread.finish(model, id, activityId, state, feedback)),
+          },
+        }),
     search: (model, options) => watch(source.search(model, options)),
     read: (model, ids, fields) => watch(source.read(model, ids, fields)),
     displayNames: (model, ids) => watch(source.displayNames(model, ids)),

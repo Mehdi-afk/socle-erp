@@ -51,7 +51,8 @@ export type FormBlock =
     }
   | { readonly kind: 'relation'; readonly title: string; readonly relation: FormRelation }
   | { readonly kind: 'tabs'; readonly pages: readonly FormPage[] }
-  | { readonly kind: 'columns'; readonly blocks: readonly FormBlock[] };
+  | { readonly kind: 'columns'; readonly blocks: readonly FormBlock[] }
+  | { readonly kind: 'chatter' };
 
 export interface FormPage {
   readonly id: string;
@@ -100,6 +101,7 @@ function fieldOf(node: ViewNode, meta: ModelMetadata, language: string): FormFie
 export function layoutOf(arch: ViewNode, meta: ModelMetadata, language: string): FormLayout {
   const confidential: FormField[] = [];
   const read = new Set<string>();
+  let hasChatter = false;
 
   const remember = (field: FormField): void => {
     read.add(field.name);
@@ -153,6 +155,10 @@ export function layoutOf(arch: ViewNode, meta: ModelMetadata, language: string):
           remember(field);
           run.push(field);
         }
+      } else if (child.type === 'chatter') {
+        flush();
+        if (!hasChatter) blocks.push({ kind: 'chatter' });
+        hasChatter = true;
       } else if (child.type === 'group') {
         flush();
         const label = isLocalized(child.attrs.label)

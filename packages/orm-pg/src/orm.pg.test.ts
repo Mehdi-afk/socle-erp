@@ -13,6 +13,7 @@ import {
   type ModelDefinition,
   type ModelExtension,
   type ModelRegistry,
+  type WriteChange,
 } from '@socle/framework';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
@@ -71,11 +72,15 @@ const registryOf = (...models: (ModelDefinition | ModelExtension)[]): ModelRegis
 const registry = registryOf(partner, tag, order, line);
 
 /** Runs `work` in one committed transaction, as a request of the server will. */
-async function request<T>(db: Executor, work: (env: Environment) => Promise<T>): Promise<T> {
+async function request<T>(
+  db: Executor,
+  work: (env: Environment) => Promise<T>,
+  modelRegistry: ModelRegistry = registry,
+): Promise<T> {
   return db.transaction().execute(async (trx) => {
     const env = createEnvironment({
-      registry,
-      storage: createPgStorage(trx, registry),
+      registry: modelRegistry,
+      storage: createPgStorage(trx, modelRegistry),
       user: { id: 'u1', groupIds: [], companyIds: [], companyId: null, lang: 'fr', tz: 'UTC' },
       access: { checkModel: () => undefined, ruleDomain: () => ({ kind: 'true' }) },
       audit: { record: () => undefined },
@@ -89,6 +94,52 @@ async function request<T>(db: Executor, work: (env: Environment) => Promise<T>):
 const databases = useTestDatabases();
 
 describe('ORM on PostgreSQL', () => {
+  it('runs write hooks after validation and rolls both parent and hook data back on failure', async () => {
+    const extension = extendModel('e2e.partner', {
+      constraints: [{ fields: ['name'], check: 'checkName' }],
+      methods: (Base) =>
+        class extends Base {
+          checkName(): void {
+            for (const record of this)
+              if (record.name === 'Invalid') throw new ValidationError('Invalid name.');
+          }
+          override async afterWrite(changes: readonly WriteChange[]): Promise<void> {
+            await super.afterWrite(changes);
+            await this.env.model('e2e.tag').create({ name: 'Written by hook' });
+            if (changes.some((change) => change.values.name?.after === 'Hook failure'))
+              throw new ValidationError('Hook failure.');
+          }
+        },
+    });
+    const extended = registryOf(partner, tag, order, line, extension);
+    const db = await databases.create();
+    await applySchema(db, extended);
+    const id = await request(
+      db,
+      async (env) => (await env.model('e2e.partner').create({ name: 'Original' })).id,
+      extended,
+    );
+    const write = (name: string) =>
+      request(db, (env) => env.model('e2e.partner').browse([id]).write({ name }), extended);
+    const state = () =>
+      request(
+        db,
+        async (env) => ({
+          name: (await env.model('e2e.partner').browse([id]).read(['name']))[0]?.name,
+          hooks: await env.model('e2e.tag').searchCount([]),
+        }),
+        extended,
+      );
+    expect(await state()).toEqual({ name: 'Original', hooks: 0 });
+    await expect(write('Invalid')).rejects.toThrow('Invalid name.');
+    expect(await state()).toEqual({ name: 'Original', hooks: 0 });
+    await expect(write('Hook failure')).rejects.toThrow('Hook failure.');
+    expect(await state()).toEqual({ name: 'Original', hooks: 0 });
+    await write('Accepted');
+    await write('Accepted');
+    expect(await state()).toEqual({ name: 'Accepted', hooks: 1 });
+  });
+
   it('creates, computes, searches, writes and deletes', async () => {
     const db = await databases.create();
     await applySchema(db, registry);

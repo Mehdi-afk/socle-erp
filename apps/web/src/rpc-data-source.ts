@@ -10,6 +10,13 @@ import type { DataSource, RecordValues } from '@socle/view-engine/data-source';
 import { z } from 'zod';
 
 import { RpcDataError, type RpcErrorCode } from './rpc-errors.js';
+import {
+  calendarEventSchema,
+  notificationSchema,
+  threadActivitySchema,
+  threadMessageSchema,
+  threadPageSchema,
+} from './thread-schema.js';
 
 /** Options for an online client bound to the current same-origin session. @public */
 export interface WebClientOptions {
@@ -298,6 +305,93 @@ async function openDataSource(
   };
 
   const data: RpcDataSource = {
+    thread: {
+      async notifications() {
+        return (
+          await request(
+            '/mail/notifications/read',
+            z.object({ notifications: z.array(notificationSchema).max(100) }),
+            {},
+          )
+        ).notifications;
+      },
+      async seen(id) {
+        const notification = parse(recordIdSchema, id, 'invalid');
+        await request(`/mail/notifications/${notification}/seen`, savedSchema, {});
+      },
+      async activities() {
+        return (
+          await request(
+            '/mail/activities',
+            z.object({ activities: z.array(calendarEventSchema).max(500) }),
+            {},
+          )
+        ).activities;
+      },
+      async read(model, id, before) {
+        modelOf(model);
+        const recordId = parse(recordIdSchema, id, 'invalid');
+        const page =
+          before === undefined ? {} : { before: parse(recordIdSchema, before, 'invalid') };
+        return request(`/mail/${model}/${recordId}/read`, threadPageSchema, page);
+      },
+      async post(model, id, body, kind) {
+        modelOf(model);
+        const recordId = parse(recordIdSchema, id, 'invalid');
+        const value = parse(
+          z.strictObject({
+            body: z.string().trim().min(1).max(10_000),
+            kind: z.enum(['comment', 'note']),
+          }),
+          { body, kind },
+          'invalid',
+        );
+        await request(
+          `/mail/${model}/${recordId}/messages`,
+          z.object({ message: threadMessageSchema }),
+          value,
+        );
+      },
+      async follow(model, id, following) {
+        modelOf(model);
+        const recordId = parse(recordIdSchema, id, 'invalid');
+        await request(`/mail/${model}/${recordId}/follow`, savedSchema, {
+          following: parse(z.boolean(), following, 'invalid'),
+        });
+      },
+      async schedule(model, id, activity) {
+        modelOf(model);
+        const recordId = parse(recordIdSchema, id, 'invalid');
+        const value = parse(
+          z.strictObject({
+            summary: z.string().trim().min(1).max(254),
+            typeId: recordIdSchema,
+            dueDate: z.iso.date(),
+          }),
+          activity,
+          'invalid',
+        );
+        await request(
+          `/mail/${model}/${recordId}/activities`,
+          z.object({ activity: threadActivitySchema }),
+          value,
+        );
+      },
+      async finish(model, id, activityId, state, feedback) {
+        modelOf(model);
+        const recordId = parse(recordIdSchema, id, 'invalid');
+        const activity = parse(recordIdSchema, activityId, 'invalid');
+        const value = parse(
+          z.strictObject({
+            state: z.enum(['done', 'cancelled']),
+            feedback: z.string().trim().max(10_000),
+          }),
+          { state, feedback },
+          'invalid',
+        );
+        await request(`/mail/${model}/${recordId}/activities/${activity}`, savedSchema, value);
+      },
+    },
     userId: session.userId,
     dispose,
     read,

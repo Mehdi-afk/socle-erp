@@ -1,4 +1,16 @@
 /* SPDX-License-Identifier: LGPL-3.0-only */
+.web-mail-tools,
+.web-mail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.web-dialog.web-mail-dialog {
+  inline-size: min(95vi, 85rem);
+  max-block-size: 90vb;
+  overflow: auto;
+}
 
 .web-login-page {
   display: flex;

@@ -14,6 +14,12 @@ const MODEL = Symbol('socle.model');
  */
 export type RecordValues = Readonly<Record<string, unknown>>;
 
+/** Values of stored fields changed by a validated write or assignment followed by flush. @public */
+export interface WriteChange {
+  readonly id: string;
+  readonly values: Readonly<Record<string, { readonly before: unknown; readonly after: unknown }>>;
+}
+
 /** @public */
 export interface SearchParams {
   /** e.g. `'date desc, name'`; defaults to the model order. */
@@ -113,6 +119,20 @@ export class Recordset {
   /** Writes the same values on every record, then flushes (checks, recomputations, constraints). */
   write(values: RecordValues): Promise<void> {
     return runtime(this.env).write(this, values);
+  }
+
+  /**
+   * Transactional lifecycle hook called after write validation, including direct field assignments.
+   * Overrides must call super; a failure aborts the caller's transaction. Create and recomputed
+   * fields do not invoke this hook. The default does nothing.
+   */
+  afterWrite(changes: readonly WriteChange[]): Promise<void> {
+    return Promise.resolve(changes).then(() => undefined);
+  }
+
+  /** Transactional privacy hook for modules holding data about an anonymized record. */
+  afterAnonymize(): Promise<void> {
+    return Promise.resolve();
   }
 
   /** Deletes the records (with `ondelete` handling and recomputation of dependent fields). */

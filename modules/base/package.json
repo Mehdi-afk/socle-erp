@@ -5,6 +5,9 @@
   "description": "Socle ERP module base: companies, partners, users, groups, currencies, countries, parameters",
   "license": "LGPL-3.0-only",
   "type": "module",
+  "exports": {
+    "./privacy": "./lib/gdpr.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"

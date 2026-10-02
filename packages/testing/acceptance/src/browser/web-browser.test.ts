@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import axe from 'axe-core';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { createWebBrowserFixture, type WebBrowserFixture } from './fixture.js';
@@ -16,6 +16,7 @@ let page: Page;
 let evidence: string;
 let errors: string[];
 let expectedUnauthenticated: Set<string>;
+let screenCounter = 0;
 const cleanup: (() => Promise<void>)[] = [];
 
 beforeAll(async () => {
@@ -58,6 +59,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   try {
+    await page.screenshot({
+      path: join(evidence, `after-${String(++screenCounter)}.png`),
+      fullPage: true,
+    });
     expect(await page.locator('vite-error-overlay').count()).toBe(0);
     expect(errors).toEqual([]);
   } finally {
@@ -65,7 +70,7 @@ afterEach(async () => {
   }
 });
 
-async function signIn(role: 'manager' | 'reader' = 'manager'): Promise<void> {
+async function signIn(role: 'manager' | 'reader' | 'colleague' = 'manager'): Promise<void> {
   await page.getByLabel(/^Identifiant\b/).fill(fixture.credentials[role].login);
   await page.getByLabel(/^Mot de passe\b/).fill(fixture.credentials[role].password);
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
@@ -86,10 +91,10 @@ async function openAtlas(): Promise<void> {
   const row = page.getByRole('row').filter({ has: page.getByText(record.name, { exact: true }) });
   await row.focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: 'Modifier : Nom', exact: true }).waitFor();
+  await page.locator('.ve-form .ui-card').first().waitFor();
 }
 
-async function checkAccessibility(name: string): Promise<void> {
+async function checkAccessibility(name: string, target?: Locator): Promise<void> {
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => {
     const engine = (globalThis as unknown as { axe: typeof axe }).axe;
@@ -102,11 +107,201 @@ async function checkAccessibility(name: string): Promise<void> {
       targets: violation.nodes.map((node) => node.target),
     }));
   });
-  await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
+  if (target) await target.screenshot({ path: join(evidence, `${name}.png`) });
+  else await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
   expect(violations).toEqual([]);
 }
 
 describe('web client with real PostgreSQL and browser cookies', () => {
+  it('posts text, schedules a personal deadline, opens its calendar and records completion in PostgreSQL', async () => {
+    await signIn();
+    await openContacts();
+    await openAtlas();
+    await page.getByLabel('Message', { exact: true }).waitFor();
+    const text = '<img src=x onerror=alert(1)> Message de validation';
+    await page.getByLabel('Message', { exact: true }).fill(text);
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await page.getByText(text, { exact: true }).waitFor();
+    expect(await page.locator('.ve-thread-message img').count()).toBe(0);
+    await page.getByLabel('Type de message', { exact: true }).selectOption('note');
+    await page.getByLabel('Note interne', { exact: true }).fill('Note interne de validation');
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await page.getByText('Note interne de validation', { exact: true }).waitFor();
+    const form = page.getByRole('form', { name: 'Planifier une activité' });
+    await form.getByLabel(/^Objet\b/).fill('Appel de validation');
+    await form.getByLabel(/^Type d’activité/).selectOption({ label: 'Appel' });
+    await form.getByLabel(/^Échéance/).fill('2026-10-02');
+    await form.getByRole('button', { name: 'Planifier pour moi' }).click();
+    await page.getByText('Appel de validation', { exact: true }).waitFor();
+    await checkAccessibility('mail-contact-fr');
+    await page.getByRole('button', { name: 'Mes activités', exact: true }).click();
+    const calendar = page.getByRole('dialog', { name: 'Mes activités', exact: true });
+    await calendar.getByLabel('Date du calendrier').fill('2026-10-02');
+    await calendar.getByRole('button', { name: /Appel de validation/ }).waitFor();
+    await checkAccessibility('mail-calendar-fr', calendar);
+    await calendar.getByLabel('Période', { exact: true }).selectOption('month');
+    expect(await calendar.locator('.ve-calendar-day').count()).toBe(42);
+    await calendar.getByLabel('Type d’activité', { exact: true }).selectOption('call');
+    await calendar.getByRole('button', { name: /Appel de validation/ }).scrollIntoViewIfNeeded();
+    await checkAccessibility('mail-calendar-month-fr', calendar);
+    await calendar.getByRole('button', { name: /Appel de validation/ }).click();
+    await calendar.waitFor({ state: 'hidden' });
+    await page.getByLabel('Compte rendu', { exact: true }).fill('Contacté pendant le test');
+    await page.getByRole('button', { name: 'Terminer', exact: true }).click();
+    await page.locator('.ve-thread-text').filter({ hasText: 'Contacté pendant le test' }).waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).waitFor();
+    await openContacts();
+    await openAtlas();
+    await page.getByText(text, { exact: true }).waitFor();
+    await page.locator('.ve-thread-text').filter({ hasText: 'Contacté pendant le test' }).waitFor();
+    expect(await page.getByRole('button', { name: 'Terminer', exact: true }).count()).toBe(0);
+  });
+
+  it('denies reader writes, direct mail RPCs, foreign-company access and missing CSRF', async () => {
+    await signIn();
+    await openContacts();
+    await openAtlas();
+    await page.getByLabel('Type de message', { exact: true }).selectOption('note');
+    await page.getByLabel('Note interne', { exact: true }).fill('Note réservée au test lecteur');
+    await page.getByRole('button', { name: 'Publier', exact: true }).click();
+    await page.getByText('Note réservée au test lecteur', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+    await signIn('reader');
+    await openContacts();
+    await openAtlas();
+    await page.getByRole('heading', { name: 'Échanges', exact: true }).waitFor();
+    expect(await page.getByText('Note réservée au test lecteur', { exact: true }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Publier', exact: true }).count()).toBe(0);
+    const session = (await (await context.request.get(`${fixture.url}/auth/session`)).json()) as {
+      csrfToken: string;
+    };
+    const headers = { Origin: fixture.url, 'x-csrf-token': session.csrfToken };
+    const refused = await context.request.post(
+      `${fixture.url}/mail/res.partner/${fixture.contactId}/messages`,
+      { headers, data: { body: 'Denied', kind: 'comment' } },
+    );
+    expect(refused.status()).toBe(403);
+    const foreign = await context.request.post(
+      `${fixture.url}/mail/res.partner/${fixture.foreignContactId}/read`,
+      { headers, data: {} },
+    );
+    expect(foreign.status()).toBe(404);
+    const direct = await context.request.post(`${fixture.url}/rpc/mail.message/searchRead`, {
+      headers,
+      data: { domain: [], fields: ['body'], limit: 10, offset: 0 },
+    });
+    expect(direct.status()).toBe(403);
+    const csrf = await context.request.post(
+      `${fixture.url}/mail/res.partner/${fixture.contactId}/messages`,
+      { headers: { Origin: fixture.url }, data: { body: 'Denied', kind: 'comment' } },
+    );
+    expect(csrf.status()).toBe(403);
+  });
+
+  it('notifies a subscriber and commits concurrent completion only once', async () => {
+    await signIn('colleague');
+    await openContacts();
+    await openAtlas();
+    await page.getByRole('button', { name: 'Suivre la fiche', exact: true }).click();
+    await page.getByRole('button', { name: 'Ne plus suivre', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+    await signIn();
+    const session = (await (await context.request.get(`${fixture.url}/auth/session`)).json()) as {
+      csrfToken: string;
+    };
+    const headers = { Origin: fixture.url, 'x-csrf-token': session.csrfToken };
+    const root = `${fixture.url}/mail/res.partner/${fixture.contactId}`;
+    const thread = await context.request.post(`${root}/read`, { headers, data: {} });
+    const { types } = (await thread.json()) as { types: { id: string }[] };
+    const typeId = types[0]?.id;
+    if (!typeId) throw new Error('Missing activity type.');
+    const scheduled = await context.request.post(`${root}/activities`, {
+      headers,
+      data: { summary: 'Concurrent completion', typeId, dueDate: '2026-10-02' },
+    });
+    expect(scheduled.status()).toBe(200);
+    const { activity } = (await scheduled.json()) as { activity: { id: string } };
+    const finish = () =>
+      context.request.post(`${root}/activities/${activity.id}`, {
+        headers,
+        data: { state: 'done', feedback: 'Completed exactly once' },
+      });
+    const responses = await Promise.all([finish(), finish()]);
+    expect(responses.map((response) => response.status()).sort()).toEqual([200, 404]);
+    const result = await context.request.post(`${root}/read`, { headers, data: {} });
+    const { messages } = (await result.json()) as { messages: { body: string }[] };
+    expect(
+      messages.filter((message) => message.body.includes('Completed exactly once')),
+    ).toHaveLength(1);
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+    await signIn('colleague');
+    await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+    const inbox = page.getByRole('dialog', { name: 'Notifications', exact: true });
+    const entry = inbox.getByRole('button', { name: /Nouvel échange/ });
+    await entry.first().waitFor();
+    await checkAccessibility('mail-notifications-fr', inbox);
+    await entry.first().click();
+    await inbox.waitFor({ state: 'hidden' });
+    await page.locator('.ve-thread-text').filter({ hasText: 'Completed exactly once' }).waitFor();
+    const own = (await (await context.request.get(`${fixture.url}/auth/session`)).json()) as {
+      csrfToken: string;
+    };
+    await expect
+      .poll(async () => {
+        const response = await context.request.post(`${fixture.url}/mail/notifications/read`, {
+          headers: { Origin: fixture.url, 'x-csrf-token': own.csrfToken },
+          data: {},
+        });
+        const value = (await response.json()) as { notifications: unknown[] };
+        return value.notifications.length;
+      })
+      .toBe(0);
+  });
+
+  it('keeps a message draft through navigation and displays the calendar in Arabic on mobile', async () => {
+    await signIn();
+    await openContacts();
+    await openAtlas();
+    await page.getByLabel('Message', { exact: true }).fill('Brouillon de message');
+    await page
+      .getByRole('navigation', { name: 'Mes données' })
+      .getByRole('button', { name: /^Contacts?$/ })
+      .click();
+    await page.getByRole('dialog', { name: 'Modifications en cours' }).waitFor();
+    await page.getByRole('button', { name: 'Rester sur la fiche', exact: true }).click();
+    expect(await page.getByLabel('Message', { exact: true }).inputValue()).toBe(
+      'Brouillon de message',
+    );
+    await page.getByLabel('Message', { exact: true }).fill('');
+    const form = page.getByRole('form', { name: 'Planifier une activité' });
+    await form.getByLabel(/^Objet\b/).fill('موعد تجريبي');
+    await form.getByLabel(/^Type d’activité/).selectOption({ label: 'Réunion' });
+    await form.getByLabel(/^Échéance/).fill('2026-10-02');
+    await form.getByRole('button', { name: 'Planifier pour moi' }).click();
+    await page.getByText('موعد تجريبي', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByText('Préférences', { exact: true }).click();
+    await page.getByLabel('Langue', { exact: true }).selectOption('ar');
+    await page.getByText('التفضيلات', { exact: true }).click();
+    await checkAccessibility('mail-contact-ar-mobile');
+    await page.getByRole('button', { name: 'أنشطتي', exact: true }).click();
+    const calendar = page.getByRole('dialog', { name: 'أنشطتي', exact: true });
+    await calendar.getByLabel('التاريخ', { exact: true }).fill('2026-10-02');
+    await calendar.getByRole('button', { name: /موعد تجريبي/ }).waitFor();
+    await calendar.getByRole('button', { name: /موعد تجريبي/ }).scrollIntoViewIfNeeded();
+    await checkAccessibility('mail-calendar-ar-mobile', calendar);
+    expect(
+      await page.evaluate(() => {
+        const html = (
+          globalThis as unknown as {
+            document: { documentElement: { clientWidth: number; scrollWidth: number } };
+          }
+        ).document.documentElement;
+        return html.scrollWidth <= html.clientWidth;
+      }),
+    ).toBe(true);
+  });
   it('signs in, edits a real base record and keeps the committed value after reload and logout', async () => {
     expect(await page.title()).not.toBe('');
     await page.getByRole('button', { name: 'Se connecter', exact: true }).waitFor();

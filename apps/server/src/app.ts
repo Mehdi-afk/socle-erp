@@ -76,6 +76,7 @@ import {
   type PasswordPolicy,
 } from './password-policy.js';
 import { registerAttachmentRoutes, type AttachmentOptions } from './attachments.js';
+import { registerMailRoutes } from './mail.js';
 import { registerOidcRoutes, type OidcOptions } from './oidc.js';
 import { registerPasskeyRoutes, type PasskeyOptions } from './passkeys.js';
 import {
@@ -706,6 +707,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   if (options.attachments) {
     registerAttachmentRoutes(app, { tenantOf, userOf, runner }, options.attachments);
   }
+  registerMailRoutes(app, { tenantOf, userOf, runner });
 
   // ─── synchronisation (§6.3) ──────────────────────────────────────────────────────────
   // ─── devices (registry, revocation, remote wipe) ─────────────────────────────────────

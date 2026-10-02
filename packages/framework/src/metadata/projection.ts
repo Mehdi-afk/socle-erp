@@ -122,6 +122,9 @@ function projectArch(
         if (typeof current.attrs.primary === 'boolean') attrs.primary = current.attrs.primary;
         sourceChildren = [];
         break;
+      case 'chatter':
+        sourceChildren = [];
+        break;
       case 'group':
       case 'page':
         copyString('name');
