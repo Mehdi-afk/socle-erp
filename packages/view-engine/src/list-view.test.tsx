@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import { UiProvider } from '@socle/ui';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -153,27 +153,38 @@ describe('ListView: scrolling through many records', () => {
   });
 
   it('asks for the next page when the window reaches it, and shows bars until it arrives', async () => {
-    const { data } = show(1000, {}, {}, 30);
+    const { data } = show(1000);
     await screen.findByText(/^1\D000 enregistrements$/);
+    const page500 = Promise.withResolvers<undefined>();
+    const originalSearch = data.search.bind(data);
+    vi.spyOn(data, 'search').mockImplementation(async (model, options) => {
+      const result = await originalSearch(model, options);
+      if (options.offset === 500) await page500.promise;
+      return result;
+    });
     scrollTo(100 * 48 - 200); // near the end of the first page
     await waitFor(() => {
       expect(data.searches.some((query) => query.offset === 100)).toBe(true);
     });
     scrollTo(500 * 48); // far away: a page nobody had asked for, not loaded yet
-    const pending = await waitFor(() => {
-      const bars = grid().querySelectorAll('.ve-row[aria-busy="true"]');
-      expect(bars.length).toBeGreaterThan(0);
-      return bars;
-    });
-    expect(pending[0]?.querySelector('.ve-bar')).toBeInTheDocument();
     await waitFor(() => {
-      expect(
-        within(rows()[0] as HTMLElement).getByText(
-          /Amel|Karim|Sara|Yacine|Lina|Omar|Nadia|Rachid|Meriem|Sofiane/,
-        ),
-      ).toBeVisible();
+      expect(data.searches.some((query) => query.offset === 500)).toBe(true);
     });
-    expect(data.searches.some((query) => query.offset === 500)).toBe(true);
+    // This page cannot arrive until explicitly released, regardless of the runner's load.
+    const pending = grid().querySelector('.ve-row[data-index="500"]');
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    expect(pending?.querySelector('.ve-bar')).toBeInTheDocument();
+    await act(async () => {
+      page500.resolve(undefined);
+      await page500.promise;
+    });
+    await waitFor(() => {
+      const loaded = grid().querySelector('.ve-row[data-index="500"]') as HTMLElement;
+      expect(loaded).toHaveAttribute('data-record', 'p-500');
+      expect(loaded).not.toHaveAttribute('aria-busy');
+      expect(loaded.querySelector('.ve-bar')).not.toBeInTheDocument();
+      expect(within(loaded).getByText('Amel Cherif 500')).toBeVisible();
+    });
   });
 
   it('gives compact rows when the user chose the compact density', async () => {
