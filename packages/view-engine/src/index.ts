@@ -20,7 +20,7 @@ export type {
   FormRelation,
 } from './form-model.js';
 export { FormView } from './form-view.js';
-export type { FormViewProps } from './form-view.js';
+export type { FormEditState, FormViewProps } from './form-view.js';
 export { formatValue, minorToDecimal } from './format.js';
 export type { Currency, FormatContext, FormatExtras } from './format.js';
 export { emailHref, phoneHref, webHref } from './links.js';

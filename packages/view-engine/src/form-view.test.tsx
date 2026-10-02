@@ -118,10 +118,18 @@ describe('FormView: reading a record', () => {
     show({ onAction });
     expect(await screen.findByRole('heading', { level: 1, name: 'Amel Benali 0' })).toBeVisible();
     expect(screen.getByText('contact0@example.test')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Écrire' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Archiver' })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Écrire' }));
     expect(onAction).toHaveBeenCalledWith('sendMail', 'p-0');
     await user.click(screen.getByRole('button', { name: 'Archiver' }));
     expect(onAction).toHaveBeenLastCalledWith('archive', 'p-0');
+  });
+
+  it('disables declared quick actions when the host has no action handler', async () => {
+    show();
+    expect(await screen.findByRole('button', { name: 'Écrire' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Archiver' })).toBeDisabled();
   });
 
   it('shows each value the way its type and widget ask, in a card named by its group', async () => {
@@ -300,11 +308,17 @@ describe('FormView: accessibility and languages', () => {
     expect(await accessibilityViolations(container)).toEqual([]);
   });
 
-  it('speaks Arabic when the user does, and keeps the secret left to right', async () => {
-    show({ onReveal: () => Promise.resolve('0001234567890') }, 30, { language: 'ar' });
+  it('speaks Arabic and keeps contact links and the secret left to right', async () => {
+    const { container } = show({ onReveal: () => Promise.resolve('0001234567890') }, 30, {
+      language: 'ar',
+    });
+    container.setAttribute('dir', 'rtl');
     await screen.findByRole('heading', { level: 1 });
     expect(screen.getByRole('region', { name: 'بيانات سرية' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Address' })).toBeInTheDocument();
+    for (const name of ['0555 12 34 00', 'https://company0.example.test']) {
+      expect(screen.getByRole('link', { name }).closest('bdi')).toHaveAttribute('dir', 'ltr');
+    }
     await user.click(screen.getByRole('button', { name: /^إظهار/ }));
     expect((await screen.findByText('0001234567890')).closest('bdi')).toHaveAttribute('dir', 'ltr');
   });

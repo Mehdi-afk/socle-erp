@@ -48,6 +48,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Install Chromium for the real web flows
+        run: pnpm --filter @socle/acceptance exec playwright install --with-deps chromium
+
+      - name: Test the web client in Chromium
+        run: pnpm --filter @socle/acceptance test:browser
+
       - name: Public API report (API Extractor)
         run: pnpm api:check
 

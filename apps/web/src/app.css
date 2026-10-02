@@ -1,0 +1,410 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+
+.web-login-page {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100dvh;
+  overflow: clip;
+  position: relative;
+  background: var(--color-canvas);
+  color: var(--color-shell-text);
+}
+
+.web-login-page::before,
+.web-login-page::after {
+  content: '';
+  position: absolute;
+  inline-size: 30rem;
+  block-size: 30rem;
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.web-login-page::before {
+  inset-block-start: -23rem;
+  inset-inline-start: -18rem;
+}
+
+.web-login-page::after {
+  inset-block-end: -23rem;
+  inset-inline-end: -18rem;
+}
+
+.web-login-header,
+.web-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-block: var(--space-6);
+  padding-inline: var(--space-8);
+}
+
+.web-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-heading-size);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.web-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-radius: var(--radius-field);
+}
+
+.web-brand-suffix {
+  font-size: var(--font-small-size);
+  font-weight: 500;
+  color: var(--color-shell-muted);
+}
+
+.web-login-main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8) var(--space-5);
+}
+
+.web-auth-card {
+  inline-size: min(100%, 28rem);
+  padding: var(--space-9);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  z-index: 1;
+}
+
+.web-auth-card header {
+  margin-block-end: var(--space-8);
+}
+
+.web-auth-card h1 {
+  font-size: var(--font-title-size);
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  margin-block-end: var(--space-3);
+}
+
+:where(.web-auth-card header) p {
+  color: var(--color-label);
+  line-height: 1.6;
+}
+
+.web-auth-card form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+:where(.web-auth-card form) > .ui-button {
+  inline-size: 100%;
+}
+
+.web-login-footer {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--color-shell-muted);
+  font-size: var(--font-small-size);
+}
+
+.web-preferences {
+  position: relative;
+  z-index: 3;
+}
+
+.web-preferences summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-label-size);
+  list-style: none;
+}
+
+.web-preferences summary::-webkit-details-marker {
+  display: none;
+}
+
+.web-preferences-panel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  inline-size: 16rem;
+  max-inline-size: calc(100vw - 2 * var(--space-5));
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.web-error,
+.web-notice {
+  margin-block-end: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-field);
+  font-size: var(--font-label-size);
+  line-height: 1.6;
+}
+
+.web-error {
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.web-notice {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+.web-provider {
+  display: block;
+  text-align: center;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.web-recovery-codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+  margin-block: var(--space-5);
+  font-size: var(--font-small-size);
+  overflow-wrap: anywhere;
+}
+
+.web-loading {
+  inline-size: min(100%, 28rem);
+  margin: auto;
+  padding: var(--space-8);
+}
+
+.web-workspace {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-block-size: 100dvh;
+  color: var(--color-shell-text);
+  background: var(--color-canvas);
+}
+
+.web-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-4);
+  background: var(--color-shell);
+  border-inline-end: 1px solid var(--color-line);
+}
+
+.web-sidebar > .web-brand {
+  padding-inline: var(--space-3);
+}
+
+.web-sidebar > .ui-button {
+  margin-block-start: auto;
+  justify-content: flex-start;
+  color: var(--color-shell-text);
+}
+
+.web-model-nav {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+}
+
+.web-model-nav h2 {
+  font-size: var(--font-small-size);
+  font-weight: 500;
+  color: var(--color-shell-muted);
+  padding-inline: var(--space-3);
+  margin-block-end: var(--space-3);
+}
+
+.web-model-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  text-align: start;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--color-shell);
+  color: var(--color-shell-text);
+  font-size: var(--font-body-size);
+  cursor: pointer;
+}
+
+.web-model-nav button svg {
+  flex: none;
+}
+
+.web-model-nav button[aria-current='page'] {
+  background: var(--color-nav-active);
+  color: var(--color-on-nav-active);
+}
+
+:where(.web-model-nav) button:disabled {
+  cursor: wait;
+}
+
+.web-workspace-header {
+  border-block-end: 1px solid var(--color-line);
+  min-block-size: 5rem;
+  padding-block: var(--space-4);
+}
+
+.web-breadcrumbs,
+.web-crumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--font-label-size);
+}
+
+.web-breadcrumbs {
+  color: var(--color-shell-muted);
+}
+
+.web-breadcrumbs button {
+  font: inherit;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--color-shell);
+  color: var(--color-shell-text);
+  cursor: pointer;
+}
+
+.web-crumb [aria-current] {
+  color: var(--color-shell-text);
+}
+
+[dir='rtl'] .web-crumb svg,
+[dir='rtl'] .web-workspace-main > .ui-button svg {
+  transform: scaleX(-1);
+}
+
+.web-workspace-main {
+  padding: var(--space-8);
+}
+
+/* This destination receives programmatic navigation focus; interactive controls keep their ring. */
+.web-workspace-main:focus {
+  outline: none;
+}
+
+.web-list-title {
+  font-size: var(--font-title-size);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-block-end: var(--space-6);
+}
+
+.web-workspace-main > .ui-button {
+  margin-block-end: var(--space-6);
+}
+
+.web-mobile-navigation {
+  display: none;
+}
+
+.web-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-canvas);
+  opacity: 0.8;
+  z-index: 10;
+}
+
+.web-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  inline-size: min(28rem, calc(100vw - 2 * var(--space-5)));
+  block-size: fit-content;
+  padding: var(--space-7);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  z-index: 11;
+}
+
+.web-dialog h2 {
+  font-size: var(--font-heading-size);
+  margin-block-end: var(--space-4);
+}
+
+.web-dialog p {
+  color: var(--color-label);
+  line-height: 1.6;
+}
+
+.web-dialog-actions {
+  display: flex;
+  justify-content: end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-6);
+}
+
+@media (width <= 820px) {
+  .web-workspace {
+    display: block;
+  }
+
+  .web-sidebar {
+    display: none;
+  }
+
+  .web-login-header,
+  .web-workspace-header {
+    padding-inline: var(--space-5);
+  }
+
+  .web-workspace-header {
+    align-items: start;
+  }
+
+  .web-mobile-navigation {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-5);
+  }
+
+  .web-mobile-navigation .ui-control {
+    flex: 1;
+    min-inline-size: 8rem;
+  }
+
+  .web-workspace-main {
+    padding: var(--space-5);
+  }
+
+  .web-auth-card {
+    padding: var(--space-6);
+  }
+
+  .web-auth-card h1 {
+    font-size: 1.625rem;
+  }
+}

@@ -14,6 +14,7 @@ import { WriteFailure, type RecordValues } from './types.js';
 
 export interface CardEdit {
   readonly original: RecordValues;
+  readonly initialDrafts: Readonly<Record<string, Draft>>;
   readonly drafts: Readonly<Record<string, Draft>>;
   readonly errors: Readonly<Record<string, string>>;
   readonly failure: string | undefined;
@@ -96,6 +97,7 @@ export function FormCard({
     );
     editing.change(cardKey, {
       original: record,
+      initialDrafts: drafts,
       drafts,
       errors: {},
       failure: undefined,

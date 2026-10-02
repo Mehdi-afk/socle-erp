@@ -688,6 +688,9 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       afterPrimaryAuth,
       cost: session.cost,
     });
+  } else {
+    // Public discovery remains available even when no external sign-in is configured.
+    app.get('/auth/oidc/providers', () => ({ providers: [] }));
   }
 
   if (options.passkeys) {

@@ -6,6 +6,7 @@ import {
   rulesOf,
   securityRecords,
   type ModelDefinition,
+  type ViewNode,
 } from '@socle/framework';
 import { describe, expect, it } from 'vitest';
 
@@ -53,6 +54,26 @@ describe('base', () => {
       expect(registry.field('res.users', 'email')?.related).toBe('partnerId.email');
     });
   }
+
+  it('declares contact widgets so composed forms and lists preserve their direction in Arabic', () => {
+    const registry = buildModelRegistry([{ module: 'base', models }], { side: 'server' });
+    const composed = buildViewRegistry([{ module: 'base', views }], registry);
+    const fieldsOf = (node: ViewNode): readonly ViewNode[] =>
+      node.type === 'field' ? [node] : node.children.flatMap(fieldsOf);
+    for (const [view, expected] of [
+      ['base.company_form', ['email', 'phone']],
+      ['base.partner_form', ['email', 'phone']],
+      ['base.partner_list', ['email', 'phone']],
+      ['base.users_form', ['email']],
+    ] as const) {
+      const fields = fieldsOf(composed.get(view).arch);
+      for (const name of expected) {
+        const matching = fields.filter((node) => node.attrs.name === name);
+        expect(matching, `${view}: ${name}`).toHaveLength(1);
+        expect(matching[0]?.attrs.widget, `${view}: ${name}`).toBe(name);
+      }
+    }
+  });
 
   it('applies the authorised-company rule to every company-scoped model', () => {
     const registry = buildModelRegistry([{ module: 'base', models }], { side: 'server' });

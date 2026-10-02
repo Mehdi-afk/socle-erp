@@ -120,6 +120,12 @@ export default tseslint.config(
     rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
   {
+    // This build fixture reads generated assets in its own mkdtemp directory. Asset paths and
+    // the resolved recursive-cleanup target are confined explicitly before filesystem access.
+    files: ['apps/web/src/build.test.ts'],
+    rules: { 'security/detect-non-literal-fs-filename': 'off' },
+  },
+  {
     // Scripts deliberately read/execute paths they compute themselves.
     files: ['scripts/**/*.mjs'],
     rules: {

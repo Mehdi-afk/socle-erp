@@ -24,8 +24,8 @@ export default [
             field('zip'),
             field('city'),
             field('stateId'),
-            field('email'),
-            field('phone'),
+            field('email', { widget: 'email' }),
+            field('phone', { widget: 'phone' }),
           ]),
         ]),
         page('legal', { fr: 'Identifiants légaux', en: 'Legal', ar: 'المعرفات القانونية' }, [
@@ -45,7 +45,12 @@ export default [
     model: 'res.partner',
     type: 'form',
     arch: form([
-      group({ name: 'main' }, [field('name'), field('kind'), field('email'), field('phone')]),
+      group({ name: 'main' }, [
+        field('name'),
+        field('kind'),
+        field('email', { widget: 'email' }),
+        field('phone', { widget: 'phone' }),
+      ]),
       group({ name: 'address' }, [
         field('street'),
         field('street2'),
@@ -60,14 +65,24 @@ export default [
     id: 'base.partner_list',
     model: 'res.partner',
     type: 'list',
-    arch: list([field('name'), field('email'), field('phone'), field('city')]),
+    arch: list([
+      field('name'),
+      field('email', { widget: 'email' }),
+      field('phone', { widget: 'phone' }),
+      field('city'),
+    ]),
   }),
   defineView({
     id: 'base.users_form',
     model: 'res.users',
     type: 'form',
     arch: form([
-      group({ name: 'main' }, [field('name'), field('login'), field('email'), field('lang')]),
+      group({ name: 'main' }, [
+        field('name'),
+        field('login'),
+        field('email', { widget: 'email' }),
+        field('lang'),
+      ]),
       notebook([
         page('access', { fr: 'Accès', en: 'Access', ar: 'الوصول' }, [
           group({ name: 'access' }, [field('companyId'), field('companyIds'), field('groupIds')]),
