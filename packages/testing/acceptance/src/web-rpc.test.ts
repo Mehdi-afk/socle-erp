@@ -86,7 +86,7 @@ describe('web RPC data source with real sessions and PostgreSQL', () => {
     expect(await source.displayNames('acc.partner', [fixture.alphaId])).toEqual(
       new Map([[fixture.alphaId, 'Client Alpha']]),
     );
-    expect(await source.displayNames('rpc.currency', [fixture.currencyId])).toEqual(
+    expect(await source.displayNames('res.currency', [fixture.currencyId])).toEqual(
       new Map([[fixture.currencyId, 'DZD']]),
     );
     const before = calls.length;

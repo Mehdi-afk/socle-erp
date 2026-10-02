@@ -3,14 +3,14 @@
 // What a `form` view shows, read from its architecture and checked against the model: a header, cards
 // of fields, notebook pages, embedded lists, and the automatic card of confidential data. Pure, so
 // that it is tested without any rendering.
-import type { FieldDefinition, LocalizedText, ModelMeta, ViewNode } from '@socle/framework';
+import type { FieldMetadata, LocalizedText, ModelMetadata, ViewNode } from '@socle/framework';
 
 import { labelOf } from './columns.js';
 import { humanize, resolveText } from './text.js';
 
 export interface FormField {
   readonly name: string;
-  readonly definition: FieldDefinition;
+  readonly definition: FieldMetadata;
   readonly label: string;
   readonly widget: string | undefined;
   readonly tones: Readonly<Record<string, unknown>> | undefined;
@@ -77,7 +77,7 @@ const isLocalized = (value: unknown): value is LocalizedText =>
 const str = (value: unknown): string | undefined =>
   typeof value === 'string' && value !== '' ? value : undefined;
 
-function fieldOf(node: ViewNode, meta: ModelMeta, language: string): FormField | undefined {
+function fieldOf(node: ViewNode, meta: ModelMetadata, language: string): FormField | undefined {
   const name = str(node.attrs.name);
   const definition = name === undefined ? undefined : meta.fields.get(name);
   if (name === undefined || !definition) return undefined;
@@ -97,7 +97,7 @@ function fieldOf(node: ViewNode, meta: ModelMeta, language: string): FormField |
 }
 
 /** The layout of a form view for a model, in the user's language. */
-export function layoutOf(arch: ViewNode, meta: ModelMeta, language: string): FormLayout {
+export function layoutOf(arch: ViewNode, meta: ModelMetadata, language: string): FormLayout {
   const confidential: FormField[] = [];
   const read = new Set<string>();
 

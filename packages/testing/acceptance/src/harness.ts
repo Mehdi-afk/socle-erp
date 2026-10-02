@@ -19,6 +19,7 @@ import {
   type SecurityPolicy,
   type Storage,
   type UserContext,
+  type ViewRegistry,
 } from '@socle/framework';
 import { createPgDatabase, type Executor } from '@socle/orm-pg';
 import {
@@ -112,6 +113,7 @@ export interface InstalledTenant {
   readonly serverRegistry: ModelRegistry;
   readonly clientRegistry: ModelRegistry;
   readonly security: SecurityPolicy;
+  readonly views: ViewRegistry;
   /** A pool on the tenant database (to check it directly). */
   readonly db: Executor;
 }
@@ -144,7 +146,7 @@ export async function installTenant(
 
   const set = await loadModules([MODULES]);
   const modules = ['acc_base', 'acc_ext'];
-  const { registry: serverRegistry, security } = compose(set, modules);
+  const { registry: serverRegistry, views, security } = compose(set, modules);
   const clientRegistry = buildModelRegistry(
     modules.map((module) => set.get(module).models),
     { side: 'client' },
@@ -163,7 +165,7 @@ export async function installTenant(
     },
     FAST,
   );
-  return { connectionString, serverRegistry, clientRegistry, security, db };
+  return { connectionString, serverRegistry, clientRegistry, views, security, db };
 }
 
 /** The HTTP server in front of `tenants` (subdomain → tenant), for tests. */
@@ -176,6 +178,7 @@ export function testServer(tenantsByName: Readonly<Record<string, InstalledTenan
           ? {
               connectionString: found.connectionString,
               registry: found.serverRegistry,
+              views: found.views,
               security: found.security,
             }
           : undefined,

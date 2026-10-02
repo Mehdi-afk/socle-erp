@@ -1,19 +1,42 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-import type { ModelRegistry } from '@socle/framework';
+import {
+  hydrateRegistrySnapshot,
+  parseRegistrySnapshot,
+  type ModelCatalog,
+  type ModelPermissions,
+  type ViewCatalog,
+} from '@socle/framework';
 import type { DataSource, RecordValues } from '@socle/view-engine/data-source';
 import { z } from 'zod';
 
 import { RpcDataError, type RpcErrorCode } from './rpc-errors.js';
 
-/** Options for an online source bound to the current same-origin session. @public */
-export interface RpcDataSourceOptions {
-  /** Metadata already supplied by the application; it does not grant any server permissions. */
-  readonly registry: ModelRegistry;
+/** Options for an online client bound to the current same-origin session. @public */
+export interface WebClientOptions {
   readonly language?: string;
   /** Injectable for tests; the browser implementation always uses same-origin relative URLs. */
   readonly fetch?: typeof globalThis.fetch;
   /** Aborting closes this source, including pending requests. */
   readonly signal?: AbortSignal;
+}
+
+/** Options for an online source using metadata already supplied by the application. @public */
+export interface RpcDataSourceOptions extends WebClientOptions {
+  /** Metadata does not grant any server permissions. */
+  readonly registry: ModelCatalog;
+}
+
+/** Filtered metadata and data source opened under the same authenticated session. @public */
+export interface WebClient {
+  readonly registry: ModelCatalog;
+  readonly views: ViewCatalog;
+  /** Global ACL capabilities only; record rules are still enforced on every server operation. */
+  readonly permissions: ReadonlyMap<string, ModelPermissions>;
+  readonly userId: string;
+  readonly companyId: string | null;
+  readonly data: RpcDataSource;
+  /** Close the data source; the application must also unmount the associated views. */
+  dispose(): void;
 }
 
 /**
@@ -68,7 +91,38 @@ const httpCode = (status: number, body: unknown): RpcErrorCode => {
  * @public
  */
 export async function connectRpcDataSource(options: RpcDataSourceOptions): Promise<RpcDataSource> {
-  const { registry, language = 'fr' } = options;
+  return (await openDataSource(options, options.registry)).data;
+}
+
+/**
+ * Loads the server-filtered catalogue and views before exposing the online data source.
+ * The metadata POST and subsequent RPC calls share the CSRF token from one session lookup.
+ * No module code or executable ORM classes are reconstructed in the browser.
+ * @public
+ */
+export async function connectWebClient(options: WebClientOptions = {}): Promise<WebClient> {
+  const { data, metadata } = await openDataSource(options);
+  if (!metadata) {
+    data.dispose();
+    throw new RpcDataError('invalid_response', options.language ?? 'fr');
+  }
+  return {
+    ...metadata,
+    data,
+    dispose() {
+      data.dispose();
+    },
+  };
+}
+
+async function openDataSource(
+  options: WebClientOptions,
+  providedRegistry?: ModelCatalog,
+): Promise<{
+  data: RpcDataSource;
+  metadata: ReturnType<typeof hydrateRegistrySnapshot> | undefined;
+}> {
+  const { language = 'fr' } = options;
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
   const controller = new AbortController();
   let terminal: RpcDataError | undefined;
@@ -159,6 +213,32 @@ export async function connectRpcDataSource(options: RpcDataSourceOptions): Promi
     }
   };
 
+  let session: z.infer<typeof sessionSchema>;
+  let registry: ModelCatalog;
+  let metadata: ReturnType<typeof hydrateRegistrySnapshot> | undefined;
+  try {
+    session = await request('/auth/session', sessionSchema);
+    active();
+    csrf = session.csrfToken;
+    if (providedRegistry) {
+      registry = providedRegistry;
+    } else {
+      const response = await request('/web/metadata', z.unknown(), {});
+      try {
+        const snapshot = parseRegistrySnapshot(response);
+        if (snapshot.userId !== session.userId) throw error('invalid_response');
+        metadata = hydrateRegistrySnapshot(snapshot);
+        registry = metadata.registry;
+      } catch {
+        throw error('invalid_response');
+      }
+      active();
+    }
+  } catch (caught) {
+    dispose();
+    throw caught;
+  }
+
   const modelOf = (model: string): void => {
     active();
     // Registry membership plus a single route segment; never accept an arbitrary URL or path.
@@ -195,16 +275,6 @@ export async function connectRpcDataSource(options: RpcDataSourceOptions): Promi
     });
   };
 
-  let session: z.infer<typeof sessionSchema>;
-  try {
-    session = await request('/auth/session', sessionSchema);
-    active();
-    csrf = session.csrfToken;
-  } catch (caught) {
-    dispose();
-    throw caught;
-  }
-
   const read: RpcDataSource['read'] = async (model, ids, fields) => {
     modelOf(model);
     const wantedFields = fieldsOf(model, fields);
@@ -227,7 +297,7 @@ export async function connectRpcDataSource(options: RpcDataSourceOptions): Promi
     });
   };
 
-  return {
+  const data: RpcDataSource = {
     userId: session.userId,
     dispose,
     read,
@@ -262,7 +332,7 @@ export async function connectRpcDataSource(options: RpcDataSourceOptions): Promi
           field &&
           (field.type === 'char' || field.type === 'text') &&
           !field.sensitive &&
-          !field.groups?.length
+          !('groups' in field && Array.isArray(field.groups) && field.groups.length > 0)
         );
       });
       if (!name) return new Map(wanted.map((id) => [id, id]));
@@ -285,4 +355,5 @@ export async function connectRpcDataSource(options: RpcDataSourceOptions): Promi
       active();
     },
   };
+  return { data, metadata };
 }

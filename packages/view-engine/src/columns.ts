@@ -3,10 +3,10 @@
 // What a `list` view asks for: its columns, read from the architecture and checked against the
 // model. Pure, so that it is tested without any rendering.
 import {
-  isStoredColumn,
-  type FieldDefinition,
+  isStoredMetadata,
+  type FieldMetadata,
   type LocalizedText,
-  type ModelMeta,
+  type ModelMetadata,
   type ViewNode,
 } from '@socle/framework';
 
@@ -14,7 +14,7 @@ import { humanize, resolveText } from './text.js';
 
 export interface Column {
   readonly name: string;
-  readonly definition: FieldDefinition;
+  readonly definition: FieldMetadata;
   /** The header text, in the user's language. */
   readonly label: string;
   /** How the view asks the value to be shown (`phone`, `email`, `status_badge`, `avatar`…). */
@@ -34,7 +34,7 @@ const isLocalized = (value: unknown): value is LocalizedText =>
 /** The label of a field: the view's, else the model's, else made from its name. */
 export function labelOf(
   name: string,
-  definition: FieldDefinition,
+  definition: FieldMetadata,
   language: string,
   override?: unknown,
 ): string {
@@ -48,7 +48,7 @@ export function labelOf(
  * have, are ignored (the view registry already refuses the latter; this keeps the engine safe with
  * a view it did not validate).
  */
-export function columnsOf(arch: ViewNode, meta: ModelMeta, language: string): Column[] {
+export function columnsOf(arch: ViewNode, meta: ModelMetadata, language: string): Column[] {
   const columns: Column[] = [];
   for (const child of arch.children) {
     if (child.type !== 'field') continue;
@@ -66,7 +66,7 @@ export function columnsOf(arch: ViewNode, meta: ModelMeta, language: string): Co
         typeof tones === 'object' && tones !== null && !Array.isArray(tones)
           ? (tones as Readonly<Record<string, unknown>>)
           : undefined,
-      sortable: isStoredColumn(definition),
+      sortable: isStoredMetadata(definition),
     });
   }
   return columns;

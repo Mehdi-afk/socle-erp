@@ -1,7 +1,7 @@
 # Modèle de menace — cœur de Socle ERP (STRIDE)
 
 - **Version** : 0.1 — 2026-09-28 (phase 0, avant tout code applicatif)
-- **Révision ciblée** : 2026-10-02 — adaptateur RPC du client web (§3.9).
+- **Révision ciblée** : 2026-10-02 — adaptateur RPC et métadonnées du client web (§3.9–3.10).
 - **Responsable** : Messaoudene Mehdi
 - **Révision** : à chaque nouveau module, à chaque changement de surface d'attaque, et avant chaque release (`ARCHITECTURE.md` §9.5).
 - **Référentiels** : OWASP ASVS 5.0 niveau 2 (tout le produit), niveau 3 (authentification, synchro, santé, caisse).
@@ -144,7 +144,7 @@ Hypothèse assumée : un module installé s'exécute dans le même processus que
 
 ### 3.9 Adaptateur RPC du client web (F1, lot 2.3)
 
-L’adaptateur `apps/web/src/rpc-data-source.ts` utilise la session déjà ouverte sur la même origine. Le registre est fourni par l’application ; il n’accorde aucun droit. Les ACL, règles de société et contrôles de champs restent appliqués par les routes RPC et l’ORM serveur.
+L’adaptateur `apps/web/src/rpc-data-source.ts` utilise la session déjà ouverte sur la même origine. Le catalogue est fourni par l’application ou chargé depuis le serveur (§3.10) ; il n’accorde aucun droit. Les ACL, règles de société et contrôles de champs restent appliqués par les routes RPC et l’ORM serveur.
 
 | STRIDE | Menace | Grav. | Mesures livrées | Phase |
 |---|---|---|---|---|
@@ -157,6 +157,22 @@ L’adaptateur `apps/web/src/rpc-data-source.ts` utilise la session déjà ouver
 Tests : `apps/web/src/rpc-data-source.test.ts` pour le transport et son cycle de vie ; `packages/testing/acceptance/src/web-rpc.test.ts` pour les vraies routes Fastify, PostgreSQL, l’audit et l’isolation entre sociétés et bases.
 
 Limites de ce lot : `dispose()` n’annule pas une transaction déjà acceptée par le serveur. L’application doit démonter les anciennes vues lors d’un changement d’identité ou de société. Le raccordement à la réplique chiffrée, l’écran de connexion et la validation du parcours complet dans un navigateur restent à livrer ; cet adaptateur ne constitue pas une file d’attente hors ligne.
+
+### 3.10 Catalogue de métadonnées du client web (F1, lot 2.3)
+
+`POST /web/metadata` publie un instantané versionné des modèles et vues `form/list` du tenant pour l’utilisateur authentifié. La projection utilise ses groupes effectifs et les ACL de lecture, puis ferme les références vers les champs et modèles retirés. Les règles d’enregistrement restent exclusivement côté serveur.
+
+| STRIDE | Menace | Grav. | Mesures livrées | Phase |
+|---|---|---|---|---|
+| I | Exposition de champs interdits, de règles internes ou de code de module | É | Projection explicite des seuls attributs publics, filtrage des groupes et ACL, retrait des références cachées dans les vues, relations et devises ; aucune valeur par défaut, définition de calcul, contrainte ou règle sérialisée | 2.3 |
+| S / I | Métadonnées et données chargées sous deux sessions différentes | É | Un seul chargement de session ; POST des métadonnées et RPC liés au même jeton CSRF ; identité de la réponse comparée ; aucune reprise transparente | 2.3 |
+| T / E | Un catalogue modifié dans le navigateur accorde des droits | É | Capacités purement indicatives ; ACL, règles de lignes et contrôles des champs réappliqués par le serveur à chaque opération | 2.3 |
+| I | Projection d’un autre utilisateur réutilisée | É | Projection par requête, tenant résolu par le serveur, réponse `no-store`, aucun cache de projection partagé | 2.3 |
+| T / D | Métadonnées mal formées ou arbre excessivement profond | M | Schémas Zod stricts, version et références validées, limites sur les collections et la profondeur avant hydratation ; aucune reconstruction de classes exécutables | 2.3 |
+
+Tests : projection et validation pures dans `packages/framework/src/metadata/`, cycle de connexion dans `apps/web/src/web-client.test.ts`, isolation et droits avec PostgreSQL réel dans `packages/testing/acceptance/src/web-metadata.test.ts`.
+
+Limites : le catalogue représente les droits au moment du chargement, pas une autorisation durable. Tout changement de session ou de société exige une nouvelle connexion et le démontage des anciennes vues. Un retrait de droit reste appliqué immédiatement par le serveur aux opérations suivantes. Les menus, les actions métier et les autres types de vues restent hors de cette première version du protocole.
 
 ## 4. Risques résiduels suivis
 
