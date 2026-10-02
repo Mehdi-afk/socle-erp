@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
+import { applyViewChanges, field } from '@socle/framework';
 import {
   applyPreferences,
   directionOf,
@@ -18,6 +19,18 @@ import type { Density } from '../src/types.js';
 import './demo.css';
 
 type Language = 'fr' | 'en' | 'ar';
+
+const demoForm = applyViewChanges(
+  contactForm,
+  [
+    {
+      at: "group[name='main'] > field[name='kind']",
+      position: 'before',
+      nodes: [field('name'), field('email', { widget: 'email' })],
+    },
+  ],
+  'Editable contact demo',
+);
 
 const fromAddress = <T extends string>(name: string, allowed: readonly T[], fallback: T): T => {
   const value = new URLSearchParams(window.location.search).get(name);
@@ -42,9 +55,10 @@ function Demo(): React.ReactElement {
     applyPreferences(document.documentElement, { theme, density, language });
   }, [theme, density, language]);
 
-  const { context } = useMemo(
-    () => fixture(5000, { language, density, timeZone: 'Africa/Algiers' }, 120),
-    [language, density],
+  const [demo] = useState(() => fixture(5000, {}, 120));
+  const context = useMemo(
+    () => ({ ...demo.context, language, density }),
+    [demo, language, density],
   );
 
   return (
@@ -102,7 +116,7 @@ function Demo(): React.ReactElement {
                 ← Retour à la liste
               </button>
               <FormView
-                arch={contactForm}
+                arch={demoForm}
                 model="res.partner"
                 id={openId}
                 onReveal={() =>

@@ -29,6 +29,23 @@ export interface Messages {
   readonly revealError: string;
   readonly notFound: string;
   readonly sections: string;
+  readonly edit: (title: string) => string;
+  readonly save: string;
+  readonly saving: string;
+  readonly cancel: string;
+  readonly saved: string;
+  readonly saveError: string;
+  readonly refreshError: string;
+  readonly choose: string;
+  readonly searchRelated: (label: string) => string;
+  readonly problem: {
+    readonly invalid: string;
+    readonly required: (label: string) => string;
+    readonly integer: string;
+    readonly number: string;
+    readonly date: string;
+    readonly decimals: (max: number) => string;
+  };
 }
 
 const fr: Messages = {
@@ -58,6 +75,23 @@ const fr: Messages = {
   revealError: 'Impossible d’afficher cette donnée.',
   notFound: 'Cet enregistrement n’existe pas ou vous n’y avez pas accès.',
   sections: 'Sections',
+  edit: (title) => `Modifier : ${title}`,
+  save: 'Enregistrer',
+  saving: 'Enregistrement…',
+  cancel: 'Annuler',
+  saved: 'Modifications enregistrées.',
+  saveError: 'Les modifications n’ont pas pu être enregistrées. Réessayez.',
+  refreshError: 'Modifications enregistrées, mais la fiche n’a pas pu être actualisée.',
+  choose: 'Choisir…',
+  searchRelated: (label) => `Rechercher : ${label}`,
+  problem: {
+    invalid: 'Cette valeur n’est pas valide.',
+    required: (label) => `Le champ « ${label} » est obligatoire.`,
+    integer: 'Saisissez un nombre entier.',
+    number: 'Saisissez un nombre.',
+    date: 'Saisissez une date valide (AAAA-MM-JJ).',
+    decimals: (max) => `Au plus ${String(max)} décimale${max > 1 ? 's' : ''}.`,
+  },
 };
 
 const en: Messages = {
@@ -87,6 +121,23 @@ const en: Messages = {
   revealError: 'This data could not be shown.',
   notFound: 'This record does not exist or you cannot access it.',
   sections: 'Sections',
+  edit: (title) => `Edit: ${title}`,
+  save: 'Save',
+  saving: 'Saving…',
+  cancel: 'Cancel',
+  saved: 'Changes saved.',
+  saveError: 'Your changes could not be saved. Please try again.',
+  refreshError: 'Changes saved, but the record could not be refreshed.',
+  choose: 'Choose…',
+  searchRelated: (label) => `Search: ${label}`,
+  problem: {
+    invalid: 'This value is not valid.',
+    required: (label) => `“${label}” is required.`,
+    integer: 'Enter a whole number.',
+    number: 'Enter a number.',
+    date: 'Enter a valid date (YYYY-MM-DD).',
+    decimals: (max) => `At most ${String(max)} decimal places.`,
+  },
 };
 
 const ar: Messages = {
@@ -115,6 +166,23 @@ const ar: Messages = {
   revealError: 'تعذّر إظهار هذه البيانات.',
   notFound: 'هذا السجل غير موجود أو لا يمكنك الوصول إليه.',
   sections: 'الأقسام',
+  edit: (title) => `تعديل: ${title}`,
+  save: 'حفظ',
+  saving: 'جارٍ الحفظ…',
+  cancel: 'إلغاء',
+  saved: 'تم حفظ التغييرات.',
+  saveError: 'تعذّر حفظ التغييرات. حاول مجددًا.',
+  refreshError: 'تم حفظ التغييرات، لكن تعذّر تحديث عرض السجل.',
+  choose: 'اختر…',
+  searchRelated: (label) => `البحث: ${label}`,
+  problem: {
+    invalid: 'هذه القيمة غير صالحة.',
+    required: (label) => `الحقل «${label}» مطلوب.`,
+    integer: 'أدخل عددًا صحيحًا.',
+    number: 'أدخل عددًا.',
+    date: 'أدخل تاريخًا صالحًا (YYYY-MM-DD).',
+    decimals: (max) => `الحد الأقصى للمنازل العشرية: ${String(max)}.`,
+  },
 };
 
 const TABLE: Readonly<Record<string, Messages>> = { fr, en, ar };

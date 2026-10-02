@@ -8,6 +8,12 @@ import type { DataSource, RecordValues, SearchOptions } from './types.js';
 export interface MemoryDataSource extends DataSource {
   /** How many `search` calls were made (to check that a list loads only what it shows). */
   readonly searches: readonly SearchOptions[];
+  /** The changes saved so far, in order (to check what a form sends). */
+  readonly writes: readonly {
+    readonly model: string;
+    readonly id: string;
+    readonly values: Readonly<Record<string, unknown>>;
+  }[];
   /** Replaces the records of a model. */
   set(model: string, records: readonly RecordValues[]): void;
 }
@@ -60,6 +66,7 @@ export function createMemoryDataSource(
 ): MemoryDataSource {
   const tables = new Map<string, readonly RecordValues[]>(Object.entries(initial));
   const searches: SearchOptions[] = [];
+  const writes: { model: string; id: string; values: Readonly<Record<string, unknown>> }[] = [];
   const later = async <T>(value: T): Promise<T> => {
     if ((options.delayMs ?? 0) > 0) {
       await new Promise((resolve) => setTimeout(resolve, options.delayMs));
@@ -69,6 +76,18 @@ export function createMemoryDataSource(
 
   return {
     searches,
+    writes,
+    async write(model, id, values) {
+      const changes = { ...values };
+      await later(undefined);
+      const records = tables.get(model) ?? [];
+      if (!records.some((record) => record.id === id)) throw new Error('Record not found.');
+      writes.push({ model, id, values: changes });
+      tables.set(
+        model,
+        records.map((record) => (record.id === id ? { ...record, ...changes, id } : record)),
+      );
+    },
     set(model, records) {
       tables.set(model, records);
     },

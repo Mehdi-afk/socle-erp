@@ -34,6 +34,25 @@ export interface DataSource {
   read(model: string, ids: readonly string[], fields: readonly string[]): Promise<RecordValues[]>;
   /** The names shown for the records a relation points to. */
   displayNames(model: string, ids: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  /**
+   * Saves the given values of one record. Without it the views are read-only. A refusal by the
+   * server (a rule, a constraint, a right) is a WriteFailure. The adapter must enforce rights and
+   * validate the change; hiding an edit button is not an authorization check.
+   */
+  write?(model: string, id: string, values: Readonly<Record<string, unknown>>): Promise<void>;
+}
+
+/**
+ * A refusal safe to show to the user; fieldErrors associates field names with localized errors.
+ * @public
+ */
+export class WriteFailure extends Error {
+  readonly fieldErrors: Readonly<Record<string, string>>;
+  constructor(message: string, fieldErrors: Readonly<Record<string, string>> = {}) {
+    super(message);
+    this.name = 'WriteFailure';
+    this.fieldErrors = fieldErrors;
+  }
 }
 
 export type Density = 'comfortable' | 'compact';

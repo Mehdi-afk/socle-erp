@@ -15,6 +15,8 @@ export interface FormField {
   readonly widget: string | undefined;
   readonly tones: Readonly<Record<string, unknown>> | undefined;
   readonly sensitive: boolean;
+  /** A view may further restrict editing, never relax a read-only model field. */
+  readonly readonly?: boolean;
 }
 
 export interface FormAction {
@@ -90,6 +92,7 @@ function fieldOf(node: ViewNode, meta: ModelMeta, language: string): FormField |
         ? (tones as Readonly<Record<string, unknown>>)
         : undefined,
     sensitive: definition.sensitive === true,
+    readonly: node.attrs.readonly === true,
   };
 }
 

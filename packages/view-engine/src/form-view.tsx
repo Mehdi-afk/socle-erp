@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// The `form` view of any model, in reading mode: a header (avatar, title, subtitle, quick actions),
+// The `form` view of any model: a header (avatar, title, subtitle, quick actions),
 // cards of label/value pairs, notebook pages as tabs, embedded lists for one2many fields, and, always
 // last, the card of confidential data whose values stay masked until the user asks for them one by
 // one (the request is the caller's `onReveal`, which the server records in the audit trail).
@@ -17,10 +17,11 @@ import {
   Tabs,
 } from '@socle/ui';
 import { Eye, EyeOff, FileQuestion, ShieldCheck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMessages, useViewContext } from './context.js';
 import { FieldValue } from './field-value.js';
+import { FormCard, type CardEdit, type CardEditing } from './form-card.js';
 import {
   layoutOf,
   type FormBlock,
@@ -56,7 +57,13 @@ type State =
 
 /** Reads the record, then draws it. Changing `id` starts again from a clean state. */
 export function FormView(props: FormViewProps): React.ReactElement {
-  return <FormRecord key={`${props.model}:${props.id}`} {...props} />;
+  const { data, registry } = useViewContext();
+  const [scope, setScope] = useState({ data, registry, revision: 0 });
+  if (scope.data !== data || scope.registry !== registry) {
+    // Reset the record before committing children from another source, including A → B → A.
+    setScope({ data, registry, revision: scope.revision + 1 });
+  }
+  return <FormRecord key={`${String(scope.revision)}:${props.model}:${props.id}`} {...props} />;
 }
 
 function FormRecord({
@@ -76,27 +83,74 @@ function FormRecord({
   const { ensure } = lookups;
   const [state, setState] = useState<State>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
+  const [sessions, setSessions] = useState<ReadonlyMap<string, CardEdit>>(() => new Map());
+  const [notice, setNotice] = useState<'saved' | 'refreshFailed' | undefined>();
+  const refreshVersionRef = useRef(0);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
     let current = true;
+    const isCurrent = (): boolean => current;
+    mountedRef.current = true;
+    const version = ++refreshVersionRef.current;
     view.data
       .read(model, [id], layout.fields)
       .then(async ([record]) => {
-        if (!current) return;
+        if (!isCurrent() || version !== refreshVersionRef.current) return;
         if (!record) {
           setState({ status: 'missing' });
           return;
         }
-        setState({ status: 'ready', record });
         await ensure(model, [record], layout.fields);
+        if (isCurrent() && version === refreshVersionRef.current)
+          setState({ status: 'ready', record });
       })
       .catch(() => {
-        if (current) setState({ status: 'failed' });
+        if (isCurrent() && version === refreshVersionRef.current) setState({ status: 'failed' });
       });
     return () => {
       current = false;
+      mountedRef.current = false;
+      refreshVersionRef.current += 1;
     };
   }, [view.data, model, id, layout, ensure, retry]);
+
+  const refresh = async (): Promise<void> => {
+    const version = ++refreshVersionRef.current;
+    try {
+      const [record] = await view.data.read(model, [id], layout.fields);
+      if (record) await ensure(model, [record], layout.fields);
+      if (!mountedRef.current || version !== refreshVersionRef.current) return;
+      setState(record ? { status: 'ready', record } : { status: 'missing' });
+      setNotice('saved');
+    } catch {
+      if (mountedRef.current && version === refreshVersionRef.current) setNotice('refreshFailed');
+    }
+  };
+
+  const editing: CardEditing = {
+    sessions,
+    change(key, edit) {
+      if (!mountedRef.current) return;
+      setSessions((previous) => {
+        const next = new Map(previous);
+        if (edit === undefined) next.delete(key);
+        else next.set(key, edit);
+        return next;
+      });
+    },
+    saved(values) {
+      if (!mountedRef.current) return;
+      setState((previous) =>
+        previous.status === 'ready'
+          ? { status: 'ready', record: { ...previous.record, ...values } }
+          : previous,
+      );
+      setNotice('saved');
+      // A failed refresh never asks the user to repeat an already accepted write.
+      void refresh();
+    },
+  };
 
   if (state.status === 'loading') {
     return (
@@ -142,6 +196,20 @@ function FormRecord({
         }
         toolbar={toolbar}
       />
+      {notice ? (
+        <div className="ve-form-notice" role="status">
+          {notice === 'saved' ? messages.saved : messages.refreshError}
+          {notice === 'refreshFailed' ? (
+            <Button
+              onClick={() => {
+                void refresh();
+              }}
+            >
+              {messages.retry}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <Blocks
         blocks={layout.blocks}
         record={state.record}
@@ -149,6 +217,8 @@ function FormRecord({
         id={id}
         lookups={lookups}
         onOpenRelated={onOpenRelated}
+        editing={editing}
+        path="form"
       />
       {layout.confidential.length > 0 ? (
         <Confidential
@@ -213,25 +283,37 @@ interface BlocksProps {
   readonly id: string;
   readonly lookups: Lookups;
   readonly onOpenRelated: ((model: string, id: string) => void) | undefined;
+  readonly editing: CardEditing;
+  readonly path: string;
 }
 
-function Blocks({ blocks, ...rest }: BlocksProps): React.ReactElement {
+function Blocks({ blocks, path, ...rest }: BlocksProps): React.ReactElement {
   const messages = useMessages();
   return (
     <>
       {blocks.map((block, index) => {
-        const key = `${block.kind}-${String(index)}`;
+        const key = `${path}/${block.kind}-${String(index)}`;
         switch (block.kind) {
           case 'card':
             return (
-              <Card key={key} {...(block.title === undefined ? {} : { title: block.title })}>
-                <FieldsList
-                  fields={block.fields}
-                  record={rest.record}
-                  model={rest.model}
-                  lookups={rest.lookups}
-                />
-              </Card>
+              <FormCard
+                key={key}
+                cardKey={key}
+                title={block.title}
+                fields={block.fields}
+                record={rest.record}
+                model={rest.model}
+                lookups={rest.lookups}
+                editing={rest.editing}
+                renderFields={(fields) => (
+                  <FieldsList
+                    fields={fields}
+                    record={rest.record}
+                    model={rest.model}
+                    lookups={rest.lookups}
+                  />
+                )}
+              />
             );
           case 'relation':
             return (
@@ -242,7 +324,7 @@ function Blocks({ blocks, ...rest }: BlocksProps): React.ReactElement {
           case 'columns':
             return (
               <div key={key} className="ve-form-columns">
-                <Blocks blocks={block.blocks} {...rest} />
+                <Blocks blocks={block.blocks} path={key} {...rest} />
               </div>
             );
           case 'tabs':
@@ -255,7 +337,7 @@ function Blocks({ blocks, ...rest }: BlocksProps): React.ReactElement {
                   label: page.label,
                   content: (
                     <div className="ve-form-page">
-                      <Blocks blocks={page.blocks} {...rest} />
+                      <Blocks blocks={page.blocks} path={`${key}/${page.id}`} {...rest} />
                     </div>
                   ),
                 }))}
