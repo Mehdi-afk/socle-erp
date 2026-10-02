@@ -1,6 +1,35 @@
 # Connexion du client web
 
-`@socle/web` charge les métadonnées autorisées pour la session et fournit une source de données en ligne pour les vues génériques. L’application web complète, son écran de connexion et le raccordement à la réplique hors ligne restent à construire.
+Le client web propose la connexion, la restauration de session et une navigation entre les listes et fiches autorisées. Il charge les métadonnées du serveur et sauvegarde les modifications via les RPC existants. Ce premier parcours fonctionne en ligne ; le raccordement à la réplique chiffrée reste à livrer.
+
+## Lancer et essayer le client
+
+Depuis la racine du dépôt, avec Node 24, les dépendances installées et Docker disponible :
+
+```sh
+pnpm --filter @socle/acceptance exec playwright install chromium
+pnpm --filter @socle/acceptance demo:web
+```
+
+La commande lance PostgreSQL temporaire, installe le vrai module `base`, puis démarre Fastify et Vite sur des ports locaux. Ouvrir l’URL `http://localhost:…` affichée. Les comptes **publics et factices**, `manager@demo.test` et `reader@demo.test`, utilisent `public-web-demo-password`. Le premier peut modifier les contacts, le second peut seulement les consulter. Choisir « Contact », ouvrir « Atelier Atlas », modifier une carte, enregistrer, revenir à la liste puis recharger la page : la valeur reste sauvegardée dans PostgreSQL. Appuyer sur **Entrée** dans le terminal pour fermer les services et supprimer ces données temporaires, y compris sous Windows.
+
+Pour une API de développement déjà disponible sur `http://127.0.0.1:8069`, `pnpm --filter @socle/web dev` utilise les proxys `/auth/`, `/web/metadata` et `/rpc/`. Configurer côté API le tenant et l’origine exacte du navigateur. Vite ne lit aucun fichier `.env` et ne modifie ni les cookies, ni le jeton CSRF, ni l’en-tête `Origin`. Le harness de démonstration fixe le tenant à ses seules données factices ; il ne constitue pas un proxy de production.
+
+`pnpm --filter @socle/web build` produit les fichiers statiques dans `apps/web/dist`. En déploiement, servir ces fichiers et l’API derrière la même origine HTTPS, avec repli SPA pour `/login`. Les en-têtes HTML, notamment la CSP, doivent être définis par ce serveur statique : la CSP restrictive des réponses API ne sert pas de politique à la page. Le serveur statique de production n’est pas livré par ce lot. Le build et son budget initial de 300 Kio gzip, hors polices, sont vérifiés par les tests.
+
+## Connexion et navigation
+
+- Mot de passe, vérification TOTP, code de secours, code par e-mail et passkey : seules les méthodes annoncées pour le défi sont proposées. L’inscription MFA propose TOTP et l’e-mail lorsqu’il est disponible. La clé TOTP est ajoutée manuellement à l’application d’authentification ; les dix codes de secours doivent être conservés avant de poursuivre.
+- Les fournisseurs OIDC configurés sont chargés publiquement. Aucun bouton SSO n’est inventé. Le callback retire immédiatement le défi de l’adresse avant toute restauration de session ; un callback MFA ne restaure pas l’éventuelle ancienne identité.
+- Les entrées de navigation proviennent des vues listes accessibles du catalogue, avec leurs libellés traduits. Une ligne ouvre sa fiche si une vue formulaire existe. Le fil d’Ariane conserve une pile en mémoire ; le retour à la liste recharge ses données. Le tri, la sélection et le défilement de cette liste ne sont pas conservés après son démontage.
+- Une carte simplement ouverte n’est pas un brouillon modifié. Une valeur différente, même invalide, protège la navigation et la déconnexion par un dialogue d’abandon. Les transitions sont bloquées pendant l’enregistrement. Le rechargement ou la fermeture de l’onglet utilise l’avertissement natif du navigateur quand il est disponible ; il n’assure pas la conservation d’une page fermée par le système mobile ([limites de `beforeunload`](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event)).
+- Une réponse 401 ou un refus CSRF démonte les vues et ferme l’ancienne source avant la reconnexion. La déconnexion révoque la session serveur ; la fiche devient inerte pendant cet appel et une expiration concurrente ne permet pas de reconnecter une autre identité avant sa fin. Un échec n’est pas silencieusement interprété comme une déconnexion réussie.
+
+Les préférences de thème, densité et langue restent locales à cette instance de page : hybride, confortable et français au départ, avec anglais et arabe RTL. Le fuseau d’affichage vient du navigateur en attendant le profil utilisateur. Les valeurs métier utilisent les traductions du module, avec le repli prévu par le moteur. Aucune identité humaine n’est déduite d’un identifiant technique.
+
+Les menus et actions métier, le choix de société, l’authentification initiale par passkey, son inscription, la récupération de mot de passe, les autres types de vues et la navigation partageable par URL restent à livrer. Les actions sans gestionnaire sont désactivées ; les champs sensibles restent masqués sans gestionnaire de révélation. Ce parcours ne présente pas d’état de synchronisation fictif.
+
+Le sous-chemin `@socle/web/auth` expose le transport d’authentification navigateur et nécessite les types DOM. La racine `@socle/web` conserve le transport de données utilisable sans charger React, CSS ou WebAuthn dans les consommateurs Node.
 
 ## Brancher les vues
 
@@ -41,7 +70,7 @@ Le serveur conserve les vues composées lors du chargement des modules et produi
 - Les capacités `create`, `write` et `unlink` décrivent les ACL globales. Elles ne préjugent jamais des droits sur un enregistrement.
 - Aucun corps de méthode, nom de calcul, valeur par défaut, contrainte ou règle d’enregistrement ne traverse ce protocole. Les labels multilingues sont conservés ; les menus et les autres types de vues ne font pas encore partie de cette version.
 
-Les boutons de vue conservent leurs métadonnées d’affichage. Leur exécution métier dépend d’un gestionnaire d’actions que cette connexion ne fournit pas.
+Les boutons de vue conservent leurs métadonnées d’affichage. Leur exécution métier dépend d’un gestionnaire d’actions que cette connexion ne fournit pas ; le moteur les désactive en son absence.
 
 ## Durée de vie et erreurs
 
@@ -71,8 +100,9 @@ pnpm --filter @socle/web typecheck
 pnpm --filter @socle/web test
 pnpm --filter @socle/acceptance exec vitest run src/web-rpc.test.ts
 pnpm --filter @socle/acceptance exec vitest run src/web-metadata.test.ts
+pnpm --filter @socle/acceptance test:browser
 ```
 
-Les deux dernières commandes exigent Docker et utilisent PostgreSQL réel avec le serveur Fastify. Elles vérifient le catalogue filtré, le contrat RPC et les transitions de session ; elles ne valident pas encore une navigation dans une application web complète.
+Les commandes acceptance exigent Docker et utilisent PostgreSQL réel avec Fastify. La suite `test:browser` ajoute Chromium, le vrai client React et les cookies natifs : sauvegarde puis rechargement, déconnexion, protection des brouillons, compte lecteur, expiration active, mobile arabe et axe. Elle s’exécute aussi en CI. Les tests DOM couvrent les étapes MFA et les réponses tardives ; une cérémonie passkey réelle et un fournisseur OIDC externe ne sont pas exercés par cette fixture.
 
 Avant de terminer un changement, exécuter aussi les contrôles du dépôt décrits dans [CONTRIBUTING.md](../../CONTRIBUTING.md), notamment `pnpm typecheck`, `pnpm lint` et `pnpm test`.

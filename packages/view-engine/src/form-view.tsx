@@ -17,7 +17,7 @@ import {
   Tabs,
 } from '@socle/ui';
 import { Eye, EyeOff, FileQuestion, ShieldCheck } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 
 import { useMessages, useViewContext } from './context.js';
 import { FieldValue } from './field-value.js';
@@ -34,6 +34,14 @@ import { ListView } from './list-view.js';
 import { useLookups, type Lookups } from './lookups.js';
 import type { RecordValues } from './types.js';
 
+/** The aggregate state of every edit card, including hidden notebook pages. @public */
+export interface FormEditState {
+  /** An input differs from its initial draft, including an invalid input. */
+  readonly dirty: boolean;
+  /** A submission is running, including its validation and required lookups. */
+  readonly saving: boolean;
+}
+
 export interface FormViewProps {
   /** The `form` node of the view (after the user's rights are applied). */
   readonly arch: ViewNode;
@@ -47,6 +55,8 @@ export interface FormViewProps {
   readonly onOpenRelated?: ((model: string, id: string) => void) | undefined;
   /** Extra controls at the end of the header (the "Edit" button, for instance). */
   readonly toolbar?: React.ReactNode;
+  /** Reports committed edit-state changes, and clears both flags when this record unmounts. */
+  readonly onEditStateChange?: ((state: FormEditState) => void) | undefined;
 }
 
 type State =
@@ -74,6 +84,7 @@ function FormRecord({
   onReveal,
   onOpenRelated,
   toolbar,
+  onEditStateChange,
 }: FormViewProps): React.ReactElement {
   const view = useViewContext();
   const messages = useMessages();
@@ -87,6 +98,24 @@ function FormRecord({
   const [notice, setNotice] = useState<'saved' | 'refreshFailed' | undefined>();
   const refreshVersionRef = useRef(0);
   const mountedRef = useRef(false);
+  const dirty = [...sessions.values()].some((edit) =>
+    Object.entries(edit.drafts).some(([name, value]) => value !== edit.initialDrafts[name]),
+  );
+  const saving = [...sessions.values()].some((edit) => edit.saving);
+  const notifyEditState = useEffectEvent((editState: FormEditState) => {
+    onEditStateChange?.(editState);
+  });
+
+  useEffect(() => {
+    notifyEditState({ dirty, saving });
+  }, [dirty, saving]);
+
+  useEffect(
+    () => () => {
+      notifyEditState({ dirty: false, saving: false });
+    },
+    [],
+  );
 
   useEffect(() => {
     let current = true;
@@ -263,6 +292,7 @@ function FormHeader({
           <Button
             key={action.method}
             variant={action.primary ? 'primary' : 'secondary'}
+            disabled={onAction === undefined}
             onClick={() => {
               onAction?.(action.method);
             }}

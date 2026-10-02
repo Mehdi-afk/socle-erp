@@ -10,7 +10,7 @@ import { buildModelRegistry, buildSecurityPolicy } from '@socle/framework';
 import { applySchema, createPgDatabase, verifyAudit, type Executor } from '@socle/orm-pg';
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose';
 import { sql } from 'kysely';
-import { afterAll, describe, expect, inject, it } from 'vitest';
+import { afterEach, describe, expect, inject, it } from 'vitest';
 
 import { buildServer, type ServerOptions } from './app.js';
 import { createUser } from './auth.js';
@@ -144,9 +144,12 @@ async function identityProvider(config: {
 
 const pools: Executor[] = [];
 const directories: TenantDirectory[] = [];
-afterAll(async () => {
-  for (const directory of directories) await directory.close();
-  for (const pool of pools) await pool.destroy();
+const apps: ReturnType<typeof buildServer>[] = [];
+// Release every fixture before the next test opens another tenant database.
+afterEach(async () => {
+  for (const app of apps.splice(0)) await app.close();
+  for (const directory of directories.splice(0)) await directory.close();
+  for (const pool of pools.splice(0)) await pool.destroy();
 });
 
 async function setup(
@@ -191,6 +194,7 @@ async function setup(
     oidc: { providers, fetch: fetched },
     ...overrides,
   });
+  apps.push(app);
   const get = (path: string, cookie?: string) =>
     app.inject({
       method: 'GET',

@@ -1,7 +1,7 @@
 # Modèle de menace — cœur de Socle ERP (STRIDE)
 
 - **Version** : 0.1 — 2026-09-28 (phase 0, avant tout code applicatif)
-- **Révision ciblée** : 2026-10-02 — adaptateur RPC et métadonnées du client web (§3.9–3.10).
+- **Révision ciblée** : 2026-10-02 — adaptateur RPC, métadonnées et parcours de session du client web (§3.9–3.11).
 - **Responsable** : Messaoudene Mehdi
 - **Révision** : à chaque nouveau module, à chaque changement de surface d'attaque, et avant chaque release (`ARCHITECTURE.md` §9.5).
 - **Référentiels** : OWASP ASVS 5.0 niveau 2 (tout le produit), niveau 3 (authentification, synchro, santé, caisse).
@@ -156,7 +156,7 @@ L’adaptateur `apps/web/src/rpc-data-source.ts` utilise la session déjà ouver
 
 Tests : `apps/web/src/rpc-data-source.test.ts` pour le transport et son cycle de vie ; `packages/testing/acceptance/src/web-rpc.test.ts` pour les vraies routes Fastify, PostgreSQL, l’audit et l’isolation entre sociétés et bases.
 
-Limites de ce lot : `dispose()` n’annule pas une transaction déjà acceptée par le serveur. L’application doit démonter les anciennes vues lors d’un changement d’identité ou de société. Le raccordement à la réplique chiffrée, l’écran de connexion et la validation du parcours complet dans un navigateur restent à livrer ; cet adaptateur ne constitue pas une file d’attente hors ligne.
+Limites de ce lot : `dispose()` n’annule pas une transaction déjà acceptée par le serveur. L’application démonte les anciennes vues lors d’un changement d’identité ; le choix de société et le raccordement à la réplique chiffrée restent à livrer. Cet adaptateur ne constitue pas une file d’attente hors ligne. Le parcours de connexion est décrit au §3.11.
 
 ### 3.10 Catalogue de métadonnées du client web (F1, lot 2.3)
 
@@ -173,6 +173,22 @@ Limites de ce lot : `dispose()` n’annule pas une transaction déjà acceptée 
 Tests : projection et validation pures dans `packages/framework/src/metadata/`, cycle de connexion dans `apps/web/src/web-client.test.ts`, isolation et droits avec PostgreSQL réel dans `packages/testing/acceptance/src/web-metadata.test.ts`.
 
 Limites : le catalogue représente les droits au moment du chargement, pas une autorisation durable. Tout changement de session ou de société exige une nouvelle connexion et le démontage des anciennes vues. Un retrait de droit reste appliqué immédiatement par le serveur aux opérations suivantes. Les menus, les actions métier et les autres types de vues restent hors de cette première version du protocole.
+
+### 3.11 Écran d’authentification et session web (F1, lot 2.3)
+
+L’écran utilise les routes d’authentification existantes sur la même origine. Les défis, mots de passe, clés d’inscription TOTP et codes de secours restent seulement en mémoire de la page. Le serveur conserve toutes les décisions d’authentification et d’autorisation.
+
+| STRIDE | Menace | Grav. | Mesures livrées | Phase |
+|---|---|---|---|---|
+| S / I | Ancien cookie restauré pendant un défi MFA OIDC | É | Fragment strictement validé puis retiré avant rendu ; aucun chargement de session pendant le défi ; nouvelle source après authentification terminée | 2.3 |
+| I | Mot de passe, défi ou codes de secours persistés ou exposés dans des erreurs | É | Aucun stockage navigateur, journal ou télémétrie ; messages locaux contrôlés ; codes montrés une seule fois avec acquittement explicite avant ouverture des vues | 2.3 |
+| T / S | Réponse d’une ancienne connexion ou déconnexion appliquée à un nouveau contexte | É | Annulation transport, scopes React par client/runtime, générations de connexion, source périmée fermée et démontée ; sérialisation déconnexion/reconnexion, aucune relance automatique | 2.3 |
+| S / E | Fournisseur ou facteur non configuré proposé comme fonction active | M | Fournisseurs publics validés, découverte vide sans OIDC ; seules méthodes du défi proposées ; passkey native en contexte sécurisé, options et réponse validées | 2.3 |
+| T | Perte silencieuse d’un brouillon lors d’un changement de vue | M | État agrégé des cartes, dialogue d’abandon, garde pendant la sauvegarde, avertissement natif de fermeture quand disponible ; aucune sauvegarde implicite | 2.3 |
+
+Tests : transport, WebAuthn et écrans dans `apps/web/src/`, notamment remplacement de client et déconnexions concurrentes ; suite `packages/testing/acceptance/src/browser/` avec PostgreSQL, cookies `Secure`/`HttpOnly` réels dans Chromium, droits de lecteur et expiration active. Le proxy de cette fixture écoute seulement en boucle locale, avec un tenant de démonstration fixe, et ne charge aucun fichier de secrets.
+
+Limites : les tests de passkey simulent l’authentificateur natif et ne remplacent pas la validation avec un appareil physique ; les callbacks OIDC sont testés sans fournisseur externe. Le client reste en ligne, sans persistance des brouillons ni réplique locale. Le déploiement devra fournir une politique CSP HTML adaptée aux fichiers statiques sous la même origine HTTPS ; les en-têtes API ne sont pas affaiblis par ce lot.
 
 ## 4. Risques résiduels suivis
 

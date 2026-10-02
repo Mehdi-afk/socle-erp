@@ -12,7 +12,7 @@ import {
 import { applySchema, createPgDatabase, verifyAudit, type Executor } from '@socle/orm-pg';
 import { signDeviceStatus, signMutation } from '@socle/sync';
 import { sql } from 'kysely';
-import { afterAll, describe, expect, inject, it } from 'vitest';
+import { afterEach, describe, expect, inject, it } from 'vitest';
 
 import { buildServer, type ServerOptions } from './app.js';
 import {
@@ -147,9 +147,12 @@ describe('building blocks', () => {
 
 const pools: Executor[] = [];
 const directories: TenantDirectory[] = [];
-afterAll(async () => {
-  for (const directory of directories) await directory.close();
-  for (const pool of pools) await pool.destroy();
+const apps: ReturnType<typeof buildServer>[] = [];
+// Fixtures belong to one test; retaining their pools until the suite ends can exhaust PostgreSQL.
+afterEach(async () => {
+  for (const app of apps.splice(0)) await app.close();
+  for (const directory of directories.splice(0)) await directory.close();
+  for (const pool of pools.splice(0)) await pool.destroy();
 });
 
 async function server(overrides: Partial<ServerOptions> = {}) {
@@ -201,6 +204,7 @@ async function server(overrides: Partial<ServerOptions> = {}) {
     logger: false,
     ...overrides,
   });
+  apps.push(app);
   const request = (
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
@@ -230,6 +234,24 @@ async function server(overrides: Partial<ServerOptions> = {}) {
 }
 
 describe('HTTP server', () => {
+  it('returns an empty public provider list when OIDC is not configured', async () => {
+    const { request } = await server();
+    const response = await request('GET', '/auth/oidc/providers');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ providers: [] });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect((await request('GET', '/auth/session')).statusCode).toBe(401);
+    expect((await request('GET', '/auth/oidc/unknown/start')).statusCode).toBe(404);
+    expect(
+      (await request('GET', '/auth/oidc/providers', { host: 'other.erp.test' })).statusCode,
+    ).toBe(404);
+    expect(
+      (await request('GET', '/auth/oidc/providers', { headers: { origin: 'https://evil.test' } }))
+        .statusCode,
+    ).toBe(403);
+  });
+
   it('sends security headers, resolves tenants and applies CORS', async () => {
     const { request } = await server();
     const response = await request('POST', '/auth/login', { body: { login: 'x', password: 'y' } });
