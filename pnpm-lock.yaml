@@ -229,7 +229,17 @@ importers:
         specifier: ^4.10.2
         version: 4.10.2
 
-  apps/web: {}
+  apps/web:
+    dependencies:
+      '@socle/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@socle/view-engine':
+        specifier: workspace:*
+        version: link:../../packages/view-engine
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   apps/worker:
     dependencies:
@@ -438,6 +448,9 @@ importers:
       '@socle/testing':
         specifier: workspace:*
         version: link:..
+      '@socle/web':
+        specifier: workspace:*
+        version: link:../../../apps/web
       '@socle/worker':
         specifier: workspace:*
         version: link:../../../apps/worker

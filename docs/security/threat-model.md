@@ -1,6 +1,7 @@
 # Modèle de menace — cœur de Socle ERP (STRIDE)
 
 - **Version** : 0.1 — 2026-09-28 (phase 0, avant tout code applicatif)
+- **Révision ciblée** : 2026-10-02 — adaptateur RPC du client web (§3.9).
 - **Responsable** : Messaoudene Mehdi
 - **Révision** : à chaque nouveau module, à chaque changement de surface d'attaque, et avant chaque release (`ARCHITECTURE.md` §9.5).
 - **Référentiels** : OWASP ASVS 5.0 niveau 2 (tout le produit), niveau 3 (authentification, synchro, santé, caisse).
@@ -140,6 +141,22 @@ Hypothèse assumée : un module installé s'exécute dans le même processus que
 | T | Commit non authentifié sur `main` | É | Ruleset : commits signés, PR obligatoire, checks requis, pas de force-push | **0 (fait)** |
 | I | Secret poussé dans le dépôt | É | Push protection, secret scanning, gitleaks (hook + CI) | **0 (fait)** |
 | T | Release falsifiée | É | SBOM, provenance, images signées cosign, Trivy (`release.yml`, activé en phase 4) | 4 |
+
+### 3.9 Adaptateur RPC du client web (F1, lot 2.3)
+
+L’adaptateur `apps/web/src/rpc-data-source.ts` utilise la session déjà ouverte sur la même origine. Le registre est fourni par l’application ; il n’accorde aucun droit. Les ACL, règles de société et contrôles de champs restent appliqués par les routes RPC et l’ORM serveur.
+
+| STRIDE | Menace | Grav. | Mesures livrées | Phase |
+|---|---|---|---|---|
+| S / I | Une ancienne fiche utilise la session d’un autre utilisateur | É | Jeton CSRF lié à la session, conservé en mémoire ; fermeture sur 401 ou refus CSRF ; aucun renouvellement ni rejeu transparent ; nouvelle source et nouvelles vues après changement de contexte | 2.3 |
+| I | Envoi de la session vers une autre origine ou une redirection | É | Routes relatives fixes, modèles connus du registre, `mode` et `credentials` à `same-origin`, redirections refusées, cache HTTP désactivé | 2.3 |
+| T / I | Réponse tardive ou mal formée affichée après fermeture | É | Annulation et rejet des réponses tardives, validation Zod, projection des seuls champs demandés, rejet des identifiants dupliqués ou non sollicités | 2.3 |
+| T | Une coupure réseau déclenche une seconde écriture | É | Aucun nouvel essai automatique ; résultat incertain signalé ; relecture avant décision de réessayer | 2.3 |
+| I | Affichage de détails internes provenant d’une erreur réseau ou serveur | M | Codes contrôlés et messages locaux FR/EN/AR ; aucun message brut ni détail par champ déduit du texte serveur | 2.3 |
+
+Tests : `apps/web/src/rpc-data-source.test.ts` pour le transport et son cycle de vie ; `packages/testing/acceptance/src/web-rpc.test.ts` pour les vraies routes Fastify, PostgreSQL, l’audit et l’isolation entre sociétés et bases.
+
+Limites de ce lot : `dispose()` n’annule pas une transaction déjà acceptée par le serveur. L’application doit démonter les anciennes vues lors d’un changement d’identité ou de société. Le raccordement à la réplique chiffrée, l’écran de connexion et la validation du parcours complet dans un navigateur restent à livrer ; cet adaptateur ne constitue pas une file d’attente hors ligne.
 
 ## 4. Risques résiduels suivis
 
