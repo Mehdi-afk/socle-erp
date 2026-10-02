@@ -140,11 +140,11 @@ function fixture(userId = 'alice') {
 }
 
 async function signIn(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  // Session transitions are under test here; AuthScreens and Chromium also exercise input.
-  await user.click(await screen.findByRole('textbox', { name: 'Identifiant' }));
-  await user.paste('alice@example.test');
-  await user.click(screen.getByLabelText(/Mot de passe/));
-  await user.paste('example-password');
+  await user.type(
+    await screen.findByRole('textbox', { name: 'Identifiant' }),
+    'alice@example.test',
+  );
+  await user.type(screen.getByLabelText(/Mot de passe/), 'example-password');
   await user.click(screen.getByRole('button', { name: 'Se connecter' }));
 }
 
