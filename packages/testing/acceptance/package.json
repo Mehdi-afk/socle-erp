@@ -19,6 +19,7 @@
     "@socle/server": "workspace:*",
     "@socle/sync": "workspace:*",
     "@socle/testing": "workspace:*",
+    "@socle/web": "workspace:*",
     "@socle/worker": "workspace:*",
     "@types/node": "^24.13.6",
     "fast-check": "^4.10.2",
