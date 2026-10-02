@@ -46,7 +46,8 @@ jobs:
         run: pnpm format:check
 
       - name: Test
-        run: pnpm test
+        # Bound package parallelism so DOM and database suites share the runner predictably.
+        run: pnpm test --concurrency=2
 
       - name: Install Chromium for the real web flows
         run: pnpm --filter @socle/acceptance exec playwright install --with-deps chromium

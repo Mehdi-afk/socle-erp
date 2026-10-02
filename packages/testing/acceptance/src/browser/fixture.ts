@@ -32,11 +32,13 @@ const READER_GROUP = 'browser_demo.group_reader';
 export const DEMO_CREDENTIALS = {
   manager: { login: 'manager@demo.test', password: 'public-web-demo-password' },
   reader: { login: 'reader@demo.test', password: 'public-web-demo-password' },
+  colleague: { login: 'colleague@demo.test', password: 'public-web-demo-password' },
 } as const;
 
 export interface WebBrowserFixture {
   readonly url: string;
   readonly contactId: string;
+  readonly foreignContactId: string;
   readonly credentials: typeof DEMO_CREDENTIALS;
   readContact(): Promise<{ name: string; city: string | null }>;
   revokeManagerSessions(): Promise<void>;
@@ -55,14 +57,16 @@ export async function createWebBrowserFixture(pgUrl: string): Promise<WebBrowser
   for (const argv of [
     ['db', 'create', tenant],
     ['module', 'install', tenant, 'base'],
+    ['module', 'install', tenant, 'mail'],
   ]) {
     if ((await main(argv, io)) !== 0) throw new Error('Could not install the browser fixture.');
   }
   const modules = await loadModules([MODULES]);
-  const { registry, views } = compose(modules, ['base']);
+  const { registry, views } = compose(modules, ['base', 'mail']);
   const security = buildSecurityPolicy(
     [
       modules.get('base').security,
+      modules.get('mail').security,
       {
         module: 'browser_demo',
         groups: [{ id: READER_GROUP, name: { fr: 'Lecteur de démonstration' } }],
@@ -117,55 +121,68 @@ export async function createWebBrowserFixture(pgUrl: string): Promise<WebBrowser
       lang: 'fr',
       tz: 'Africa/Algiers',
     };
-    const { companyId, contactId } = await db.transaction().execute(async (trx) => {
-      const env = createEnvironment({
-        registry,
-        storage: createPgStorage(trx, registry),
-        user: administrator,
-        access: createAccessControl(security, registry),
-        audit: { record: () => undefined },
-      });
-      const seed = env.sudo('Public browser demonstration fixtures');
-      const currency = await seed.model('res.currency').search([['code', '=', 'DZD']]);
-      const country = await seed.model('res.country').search([['code', '=', 'DZ']]);
-      const company = await seed.model('res.company').create({
-        name: 'Société de démonstration',
-        currencyId: currency.ids[0],
-        countryId: country.ids[0],
-        city: 'Alger',
-      });
-      const contacts = await seed.model('res.partner').create([
-        {
-          name: 'Atelier Atlas',
-          kind: 'company',
-          email: 'atlas@example.test',
-          phone: '+213 21 00 00 01',
+    const { companyId, contactId, foreignContactId } = await db
+      .transaction()
+      .execute(async (trx) => {
+        const env = createEnvironment({
+          registry,
+          storage: createPgStorage(trx, registry),
+          user: administrator,
+          access: createAccessControl(security, registry),
+          audit: { record: () => undefined },
+        });
+        const seed = env.sudo('Public browser demonstration fixtures');
+        const currency = await seed.model('res.currency').search([['code', '=', 'DZD']]);
+        const country = await seed.model('res.country').search([['code', '=', 'DZ']]);
+        const company = await seed.model('res.company').create({
+          name: 'Société de démonstration',
+          currencyId: currency.ids[0],
+          countryId: country.ids[0],
           city: 'Alger',
-          countryId: country.ids[0],
-          companyId: company.id,
-        },
-        {
-          name: 'Bureau Oran',
-          kind: 'company',
-          email: 'oran@example.test',
-          phone: '+213 41 00 00 02',
-          city: 'Oran',
-          countryId: country.ids[0],
-          companyId: company.id,
-        },
-      ]);
-      await env.flush();
-      const first = contacts.ids[0];
-      if (!first) throw new Error('The browser contact fixture was not created.');
-      return { companyId: company.id, contactId: first };
-    });
-    for (const role of ['manager', 'reader'] as const) {
+        });
+        const contacts = await seed.model('res.partner').create([
+          {
+            name: 'Atelier Atlas',
+            kind: 'company',
+            email: 'atlas@example.test',
+            phone: '+213 21 00 00 01',
+            city: 'Alger',
+            countryId: country.ids[0],
+            companyId: company.id,
+          },
+          {
+            name: 'Bureau Oran',
+            kind: 'company',
+            email: 'oran@example.test',
+            phone: '+213 41 00 00 02',
+            city: 'Oran',
+            countryId: country.ids[0],
+            companyId: company.id,
+          },
+        ]);
+        await env.flush();
+        const first = contacts.ids[0];
+        if (!first) throw new Error('The browser contact fixture was not created.');
+        const foreignCompany = await seed
+          .model('res.company')
+          .create({ name: 'Société étrangère de test', currencyId: currency.ids[0] });
+        const foreignContact = await seed
+          .model('res.partner')
+          .create({ name: 'Contact hors périmètre', companyId: foreignCompany.id });
+        return { companyId: company.id, contactId: first, foreignContactId: foreignContact.id };
+      });
+    for (const role of ['manager', 'reader', 'colleague'] as const) {
       await createUser(
         db,
         {
           id: `demo-${role}`,
           ...DEMO_CREDENTIALS[role],
-          groupIds: role === 'manager' ? ['base.group_system'] : [READER_GROUP],
+          groupIds:
+            role === 'manager'
+              ? ['base.group_system']
+              : role === 'reader'
+                ? [READER_GROUP]
+                : ['base.group_user'],
           companyIds: [companyId],
           companyId,
         },
@@ -191,6 +208,7 @@ export async function createWebBrowserFixture(pgUrl: string): Promise<WebBrowser
           '/auth/': proxy,
           '/web/metadata': proxy,
           '/rpc/': proxy,
+          '/mail/': proxy,
         },
       },
     });
@@ -204,6 +222,7 @@ export async function createWebBrowserFixture(pgUrl: string): Promise<WebBrowser
       url,
       credentials: DEMO_CREDENTIALS,
       contactId,
+      foreignContactId,
       readContact: () => readContact(db, contactId),
       async revokeManagerSessions() {
         for (const session of await listSessions(db, administrator.id, undefined)) {

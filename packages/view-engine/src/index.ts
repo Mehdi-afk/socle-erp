@@ -20,6 +20,9 @@ export type {
   FormRelation,
 } from './form-model.js';
 export { FormView } from './form-view.js';
+export { CalendarView } from './calendar-view.js';
+export type { CalendarViewProps } from './calendar-view.js';
+export { calendarDays, addCalendarDays, moveCalendar } from './calendar-days.js';
 export type { FormEditState, FormViewProps } from './form-view.js';
 export { formatValue, minorToDecimal } from './format.js';
 export type { Currency, FormatContext, FormatExtras } from './format.js';
@@ -39,6 +42,12 @@ export type {
   SearchOptions,
   SearchResult,
   ViewContext,
+  ThreadSource,
+  ThreadPage,
+  ThreadMessage,
+  ThreadActivity,
+  ThreadNotification,
+  CalendarEvent,
 } from './types.js';
 export { windowOf } from './virtual.js';
 export type { RowWindow, WindowInput } from './virtual.js';

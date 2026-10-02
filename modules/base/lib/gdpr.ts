@@ -71,11 +71,20 @@ export async function retentionBlocks(
   return blocks;
 }
 
-/** Everything the user may read about a contact: their record and the records referring to them. */
+/** Everything the user may read about a contact: their record and the records referring to them. @public */
 export interface PersonalDataExport {
   readonly exportedAt: string;
   readonly partner: Record<string, unknown>;
   readonly related: Record<string, Record<string, unknown>[]>;
+}
+
+declare module '@socle/framework' {
+  interface ModelFields {
+    'res.partner': {
+      gdprExport(): Promise<PersonalDataExport>;
+      gdprAnonymize(): Promise<{ readonly anonymized: true }>;
+    };
+  }
 }
 
 /** Exports what `env` (the requesting user, with their rights) may read about `partnerId`. */

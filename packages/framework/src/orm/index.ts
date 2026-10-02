@@ -75,7 +75,7 @@ export type {
   RuntimeSide,
 } from './model-registry.js';
 export { Recordset, RECORDSET_MEMBERS } from './recordset.js';
-export type { RecordValues, SearchParams } from './recordset.js';
+export type { RecordValues, SearchParams, WriteChange } from './recordset.js';
 export type { SearchOptions, Storage, StorageActor, StoredValues } from './storage.js';
 export type {
   ExtensionClass,

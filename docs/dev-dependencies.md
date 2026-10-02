@@ -16,6 +16,8 @@ L’authentification utilise `fetch` et les API WebAuthn natives du navigateur. 
 
 ## Construction et vérification
 
+Le module `mail` réutilise `zod` 4.6.5 (MIT), `@socle/framework` et `@socle/module-base` (LGPL-3.0-only). Le serveur référence ce nouveau paquet workspace ; aucun paquet tiers, SDK de messagerie ou bibliothèque de calendrier n’est ajouté. Les services partagent les contrats ORM et RGPD publics, les composants utilisent le design system existant et `Intl`. Les tests réutilisent Vitest, Playwright, axe et PostgreSQL déjà présents. Le verrouillage des versions et les contrôles de licences restent identiques.
+
 | Paquet | Version | Licence | Besoin et alternative |
 |---|---|---|---|
 | `vite`, `@vitejs/plugin-react` | 8.3.0 / 6.1.1 | MIT | Serveur local et construction de production de l’application React. Même outil que le guide UI et la démonstration du moteur ; aucune seconde chaîne de compilation. |

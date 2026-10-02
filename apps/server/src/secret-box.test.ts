@@ -22,7 +22,12 @@ describe('secret box', () => {
     expect(open(key, sealed, 'bob')).toBeUndefined();
     expect(open(Uint8Array.from(randomBytes(32)), sealed, 'alice')).toBeUndefined();
     const parts = sealed.split('.');
-    parts[3] = `${parts[3]?.slice(0, -2) ?? ''}AA`;
+    // Replacing trailing base64 characters with AA could leave the random ciphertext unchanged.
+    const body = Buffer.from(parts[3] ?? '', 'base64url');
+    const first = body[0];
+    if (first === undefined) throw new Error('The test needs a nonempty ciphertext.');
+    body[0] = first ^ 1;
+    parts[3] = body.toString('base64url');
     expect(open(key, parts.join('.'), 'alice')).toBeUndefined();
     // A shortened tag is refused, however it was cut.
     const short = [...parts];

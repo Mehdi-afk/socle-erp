@@ -69,6 +69,7 @@ export default defineModel({
           throw new ValidationError('This person is a user: remove the user account first.');
         }
         await partner.write(anonymizedValues(this.env.registry.get('res.partner')));
+        await partner.afterAnonymize();
         return { anonymized: true };
       }
     },

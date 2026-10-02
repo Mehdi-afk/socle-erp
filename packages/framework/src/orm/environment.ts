@@ -18,7 +18,7 @@ import {
   type ModelRegistry,
   type RuntimeSide,
 } from './model-registry.js';
-import { Recordset, type RecordValues, type SearchParams } from './recordset.js';
+import { Recordset, type RecordValues, type SearchParams, type WriteChange } from './recordset.js';
 import type { Storage, StorageActor } from './storage.js';
 import type { RecordsetOf } from './typing.js';
 import { emptyValue, isRecordId, normalizeValue } from './values.js';
@@ -50,6 +50,8 @@ export interface UserContext {
  * @public
  */
 export interface AccessControl {
+  /** Effective group membership, including implied groups. */
+  hasGroup?(env: Environment, group: string): boolean;
   checkModel(env: Environment, model: string, operation: Operation): void;
   /** Record rules as a domain (`{ kind: 'true' }` when none apply). */
   ruleDomain(env: Environment, model: string, operation: Operation): DomainNode;
@@ -190,6 +192,11 @@ export class Environment {
     return this.user.companyId;
   }
 
+  /** Effective membership supplied by the security policy; direct groups for custom adapters. */
+  hasGroup(group: string): boolean {
+    return runtime(this).hasGroup(group);
+  }
+
   /** An empty recordset of a model, to search, browse or create. */
   model<M extends string>(name: M): RecordsetOf<M> {
     const meta = this.registry.get(name);
@@ -285,6 +292,12 @@ export class Runtime {
     this.registry = options.registry;
   }
 
+  hasGroup(group: string): boolean {
+    return (
+      this.options.access.hasGroup?.(this.env, group) ?? this.env.user.groupIds.includes(group)
+    );
+  }
+
   /** The storage acting for `as` (row-level security in SQL storages). */
   private store(as: Environment = this.env): Storage {
     const actor: StorageActor = {
@@ -322,6 +335,8 @@ export class Runtime {
     const storage = this.store();
     if (!storage.lock) throw new RecordsetError('This storage cannot lock records.');
     await storage.lock(meta, records.ids);
+    // A concurrent commit may have changed a rule field while the lock was waiting.
+    await this.checkRecords(meta, records.ids, 'write');
     // Values read before the lock may be stale: read them again.
     const cached = this.state.cache.get(meta.name);
     for (const id of records.ids) cached?.delete(id);
@@ -917,7 +932,13 @@ export class Runtime {
       state.dirtySu.clear();
       const originals = new Map(state.originals);
       state.originals.clear();
-      const touched: { meta: ModelMeta; ids: string[]; fields: string[] }[] = [];
+      const touched: {
+        meta: ModelMeta;
+        ids: string[];
+        fields: string[];
+        as: Environment;
+        changes: WriteChange[];
+      }[] = [];
 
       for (const { dirty, as } of batches)
         for (const [model, byId] of dirty) {
@@ -926,12 +947,18 @@ export class Runtime {
           await this.checkRecords(meta, [...byId.keys()], 'write', as);
           const now = this.now();
           const fields = new Set<string>();
+          const changes: WriteChange[] = [];
           for (const [id, names] of byId) {
             const values: Record<string, unknown> = { updatedAt: now, updatedBy: this.env.user.id };
+            const changed: Record<string, { before: unknown; after: unknown }> = {};
             for (const name of names) {
               values[name] = this.cached(model, id, name);
+              const before = originals.get(model)?.get(id)?.get(name);
+              if (before !== UNSET && JSON.stringify(before) !== JSON.stringify(values[name]))
+                changed[name] = { before, after: values[name] };
               fields.add(name);
             }
+            if (Object.keys(changed).length > 0) changes.push({ id, values: changed });
             this.setCached(model, id, 'updatedAt', now);
             this.setCached(model, id, 'updatedBy', this.env.user.id);
             await this.store(as).update(meta, id, values);
@@ -940,7 +967,7 @@ export class Runtime {
           // The records must still satisfy the write rules once changed: a user cannot move a
           // record out of their own scope (e.g. to a company they do not belong to).
           await this.checkRecords(meta, ids, 'write', as);
-          touched.push({ meta, ids, fields: [...fields] });
+          touched.push({ meta, ids, fields: [...fields], as, changes });
           await this.propagate({
             model,
             ids,
@@ -952,6 +979,9 @@ export class Runtime {
       for (const { meta, ids, fields } of touched) {
         await this.checkRequired(meta, ids, fields);
         await this.checkConstraints(meta, ids, fields);
+      }
+      for (const { meta, ids, as, changes } of touched) {
+        if (changes.length > 0) await this.records(as, meta.name, ids).afterWrite(changes);
       }
     }
   }

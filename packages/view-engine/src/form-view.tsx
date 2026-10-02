@@ -17,7 +17,7 @@ import {
   Tabs,
 } from '@socle/ui';
 import { Eye, EyeOff, FileQuestion, ShieldCheck } from 'lucide-react';
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 
 import { useMessages, useViewContext } from './context.js';
 import { FieldValue } from './field-value.js';
@@ -33,6 +33,7 @@ import './form-view.css';
 import { ListView } from './list-view.js';
 import { useLookups, type Lookups } from './lookups.js';
 import type { RecordValues } from './types.js';
+import { ThreadPanel } from './thread-panel.js';
 
 /** The aggregate state of every edit card, including hidden notebook pages. @public */
 export interface FormEditState {
@@ -96,12 +97,20 @@ function FormRecord({
   const [retry, setRetry] = useState(0);
   const [sessions, setSessions] = useState<ReadonlyMap<string, CardEdit>>(() => new Map());
   const [notice, setNotice] = useState<'saved' | 'refreshFailed' | undefined>();
+  const [threadEdit, setThreadEdit] = useState<FormEditState>({ dirty: false, saving: false });
+  const [writeRevision, setWriteRevision] = useState(0);
+  const reportThreadEdit = useCallback((value: FormEditState) => {
+    setThreadEdit(value);
+  }, []);
   const refreshVersionRef = useRef(0);
   const mountedRef = useRef(false);
-  const dirty = [...sessions.values()].some((edit) =>
-    Object.entries(edit.drafts).some(([name, value]) => value !== edit.initialDrafts[name]),
-  );
-  const saving = [...sessions.values()].some((edit) => edit.saving);
+  const dirty =
+    threadEdit.dirty ||
+    [...sessions.values()].some((edit) =>
+      Object.entries(edit.drafts).some(([name, value]) => value !== edit.initialDrafts[name]),
+    );
+  const cardSaving = [...sessions.values()].some((edit) => edit.saving);
+  const saving = cardSaving || threadEdit.saving;
   const notifyEditState = useEffectEvent((editState: FormEditState) => {
     onEditStateChange?.(editState);
   });
@@ -176,6 +185,7 @@ function FormRecord({
           : previous,
       );
       setNotice('saved');
+      setWriteRevision((value) => value + 1);
       // A failed refresh never asks the user to repeat an already accepted write.
       void refresh();
     },
@@ -248,6 +258,9 @@ function FormRecord({
         onOpenRelated={onOpenRelated}
         editing={editing}
         path="form"
+        threadEdit={reportThreadEdit}
+        writeRevision={writeRevision}
+        cardSaving={cardSaving}
       />
       {layout.confidential.length > 0 ? (
         <Confidential
@@ -307,6 +320,9 @@ function FormHeader({
 }
 
 interface BlocksProps {
+  readonly threadEdit: (value: FormEditState) => void;
+  readonly writeRevision: number;
+  readonly cardSaving: boolean;
   readonly blocks: readonly FormBlock[];
   readonly record: RecordValues;
   readonly model: string;
@@ -324,6 +340,17 @@ function Blocks({ blocks, path, ...rest }: BlocksProps): React.ReactElement {
       {blocks.map((block, index) => {
         const key = `${path}/${block.kind}-${String(index)}`;
         switch (block.kind) {
+          case 'chatter':
+            return (
+              <ThreadPanel
+                key={key}
+                model={rest.model}
+                id={rest.id}
+                revision={rest.writeRevision}
+                disabled={rest.cardSaving}
+                onEditState={rest.threadEdit}
+              />
+            );
           case 'card':
             return (
               <FormCard
@@ -360,6 +387,7 @@ function Blocks({ blocks, path, ...rest }: BlocksProps): React.ReactElement {
           case 'tabs':
             return (
               <Tabs
+                keepMounted
                 key={key}
                 label={messages.sections}
                 items={block.pages.map((page) => ({

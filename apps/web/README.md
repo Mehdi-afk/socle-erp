@@ -31,6 +31,14 @@ Les menus et actions métier, le choix de société, l’authentification initia
 
 Le sous-chemin `@socle/web/auth` expose le transport d’authentification navigateur et nécessite les types DOM. La racine `@socle/web` conserve le transport de données utilisable sans charger React, CSS ou WebAuthn dans les consommateurs Node.
 
+## Conversations et calendrier
+
+Avec le module `mail` installé, les vues contenant un nœud `chatter` affichent le fil et les activités personnelles. Les boutons **Notifications** et **Mes activités** ouvrent la boîte de notifications et le calendrier des échéances, avec semaine, mois et filtre par type. Un événement ouvre sa fiche en passant par la protection des brouillons.
+
+Le transport `/mail/` partage la source, la session et le CSRF des RPC. Les messages restent du texte, les notes internes et les opérations d’écriture sont autorisées par le serveur. Les brouillons restent en mémoire lors d’un changement d’onglet ; une publication acceptée les efface avant la relecture. L’interface ne rejoue pas une mutation après une panne réseau.
+
+Ce premier lot ne fournit pas d’envoi d’e-mails, de rappels, de pièces jointes dans le fil ni de synchronisation hors ligne. Les activités sont assignées à soi-même, à la journée. Voir [le module mail](../../modules/mail/README.md) pour les plafonds, les contrôles d’accès et le traitement RGPD. La démonstration `demo:web` installe également ce module ; le proxy de développement doit transmettre `/mail/` vers la même API.
+
 ## Brancher les vues
 
 L’application attend `connectWebClient()` avant de monter les vues. La connexion fournit un `ModelCatalog` sans code de module, un catalogue de vues et la source de données. Ces métadonnées ne donnent aucun droit : le serveur applique ses ACL, ses règles d’enregistrement et ses contrôles de champs à chaque RPC.

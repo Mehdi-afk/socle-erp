@@ -30,6 +30,8 @@ export interface SearchResult {
 }
 
 export interface DataSource {
+  /** Optional parent-authorized conversations, never generic reads of polymorphic mail rows. */
+  readonly thread?: ThreadSource;
   search(model: string, options: SearchOptions): Promise<SearchResult>;
   read(model: string, ids: readonly string[], fields: readonly string[]): Promise<RecordValues[]>;
   /** The names shown for the records a relation points to. */
@@ -40,6 +42,79 @@ export interface DataSource {
    * validate the change; hiding an edit button is not an authorization check.
    */
   write?(model: string, id: string, values: Readonly<Record<string, unknown>>): Promise<void>;
+}
+
+export interface ThreadMessage {
+  readonly id: string;
+  readonly kind: 'comment' | 'note' | 'tracking';
+  readonly body: string;
+  readonly authorId: string;
+  readonly createdAt: string;
+  readonly changes: Readonly<
+    Record<string, { readonly before: unknown; readonly after: unknown }>
+  > | null;
+}
+export interface ThreadActivity {
+  readonly id: string;
+  readonly summary: string;
+  readonly typeId: string;
+  readonly dueDate: string;
+  readonly state: 'planned' | 'done' | 'cancelled';
+  readonly feedback: string | null;
+  readonly assignedUserId: string;
+}
+export interface ThreadPage {
+  readonly messages: readonly ThreadMessage[];
+  readonly before: string | null;
+  readonly activities: readonly ThreadActivity[];
+  readonly types: readonly {
+    readonly id: string;
+    readonly code: string;
+    readonly name: string;
+    readonly color: number;
+  }[];
+  readonly following: boolean;
+  readonly internal: boolean;
+  /** A global capability only; every write rechecks the record's rights. */
+  readonly canPost: boolean;
+}
+export interface ThreadSource {
+  notifications?(): Promise<readonly ThreadNotification[]>;
+  seen?(id: string): Promise<void>;
+  activities?(): Promise<readonly CalendarEvent[]>;
+  read(model: string, id: string, before?: string): Promise<ThreadPage>;
+  post(model: string, id: string, body: string, kind: 'comment' | 'note'): Promise<void>;
+  follow(model: string, id: string, following: boolean): Promise<void>;
+  schedule(
+    model: string,
+    id: string,
+    activity: { readonly summary: string; readonly typeId: string; readonly dueDate: string },
+  ): Promise<void>;
+  finish(
+    model: string,
+    id: string,
+    activityId: string,
+    state: 'done' | 'cancelled',
+    feedback: string,
+  ): Promise<void>;
+}
+
+export interface ThreadNotification {
+  readonly id: string;
+  readonly model: string;
+  readonly recordId: string;
+  readonly kind: 'comment' | 'note' | 'tracking';
+}
+/** A dated event from any module; this initial calendar displays whole-day deadlines. */
+export interface CalendarEvent {
+  readonly id: string;
+  readonly summary: string;
+  readonly dueDate: string;
+  readonly resModel: string;
+  readonly resId: string;
+  readonly typeName: string;
+  readonly typeCode: string;
+  readonly color: number;
 }
 
 /**

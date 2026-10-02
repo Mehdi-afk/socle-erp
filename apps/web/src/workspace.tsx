@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import * as Dialog from '@radix-ui/react-dialog';
+import type { ViewNode } from '@socle/framework';
 import { Button, EmptyState, SelectField, type Preferences } from '@socle/ui';
 import { FormView, ListView, ViewEngineProvider, type FormEditState } from '@socle/view-engine';
 import { ArrowLeft, ChevronRight, Database, LogOut } from 'lucide-react';
@@ -11,6 +12,10 @@ import { backTo, catalogEntries, navigate, routeView, type WebRoute } from './na
 import { PreferenceControls } from './preferences.js';
 import type { WebClient } from './rpc-data-source.js';
 import { watchSession } from './session-data.js';
+import { MailTools } from './mail-tools.js';
+
+const hasChatter = (arch: ViewNode): boolean =>
+  arch.type === 'chatter' || arch.children.some(hasChatter);
 
 export default function Workspace({
   client,
@@ -32,6 +37,10 @@ export default function Workspace({
   );
   const [stack, setStack] = useState<readonly WebRoute[]>(() =>
     entries[0] === undefined ? [] : [{ model: entries[0].model }],
+  );
+  const hasMail = useMemo(
+    () => entries.some((item) => item.form && hasChatter(item.form.arch)),
+    [entries],
   );
   const [editing, setEditing] = useState<FormEditState>({ dirty: false, saving: false });
   const [pending, setPending] = useState<(() => void) | undefined>();
@@ -184,6 +193,24 @@ export default function Workspace({
             ))}
           </nav>
           <PreferenceControls value={preferences} onChange={onPreferences} />
+          {data.thread && hasMail ? (
+            <MailTools
+              source={data.thread}
+              registry={client.registry}
+              language={preferences.language}
+              timeZone={context.timeZone}
+              disabled={blocked}
+              onOpen={(model, id, accepted) => {
+                const destination = { model, id };
+                if (routeView(entries, destination) === undefined) return;
+                guard(() => {
+                  setStack(navigate(stack, destination));
+                  setError(undefined);
+                  accepted();
+                });
+              }}
+            />
+          ) : null}
         </header>
         <div className="web-mobile-navigation">
           <SelectField

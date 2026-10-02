@@ -49,6 +49,7 @@ export const nodeAttributes = {
     tones: toneMap.optional(),
   }),
   button: z.strictObject({ name, label: localized.optional(), primary: z.boolean().optional() }),
+  chatter: z.strictObject({}),
 };
 export type SnapshotNodeType = keyof typeof nodeAttributes;
 export const nodeTypes = Object.keys(nodeAttributes) as SnapshotNodeType[];
@@ -133,6 +134,7 @@ const nodeSchema: z.ZodType<ViewNode> = z.lazy(() =>
         'page',
         'field',
         'button',
+        'chatter',
       ]),
       attrs: z.record(z.string().max(64), z.union([text, z.boolean(), localized, toneMap])),
       children: z.array(nodeSchema).max(200),

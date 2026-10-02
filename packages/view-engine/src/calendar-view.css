@@ -1,0 +1,86 @@
+/* SPDX-License-Identifier: LGPL-3.0-only */
+.ve-calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.ve-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ve-calendar-day {
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  min-inline-size: 0;
+}
+
+.ve-calendar-day h3 {
+  font-size: var(--font-small-size);
+  margin-block-start: 0;
+}
+
+.ve-calendar-day ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ve-calendar-event {
+  display: grid;
+  gap: var(--space-2);
+  inline-size: 100%;
+  border: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+  font: inherit;
+  color: var(--color-on-category);
+  background: var(--color-category-1);
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  margin-block-end: var(--space-2);
+}
+
+.ve-calendar-event[data-color='2'] {
+  background: var(--color-category-2);
+}
+
+.ve-calendar-event[data-color='3'] {
+  background: var(--color-category-3);
+}
+
+.ve-calendar-event[data-color='4'] {
+  background: var(--color-category-4);
+}
+
+.ve-calendar-event[data-color='5'] {
+  background: var(--color-category-5);
+}
+
+.ve-calendar-event[data-color='6'] {
+  background: var(--color-category-6);
+}
+
+.ve-calendar-event[data-color='7'] {
+  background: var(--color-category-7);
+}
+
+.ve-calendar-event[data-color='8'] {
+  background: var(--color-category-8);
+}
+
+.ve-calendar-empty {
+  color: var(--color-label);
+  font-size: var(--font-small-size);
+}
+
+@media (width < 820px) {
+  .ve-calendar-days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

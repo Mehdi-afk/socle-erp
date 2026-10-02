@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createEnvironment, type UserContext } from './environment.js';
-import { RecordsetError, ServerOnlyError } from './errors.js';
+import { AccessError, RecordsetError, ServerOnlyError } from './errors.js';
 import { f } from './fields.js';
 import { createMemoryStorage } from './memory-storage.js';
 import { defineModel } from './model.js';
@@ -30,6 +30,34 @@ function env(side: 'server' | 'client') {
 }
 
 describe('locks and counters', () => {
+  it('rechecks write rules after waiting for a record lock', async () => {
+    const registry = buildModelRegistry([{ module: 'lk', models: [item] }], { side: 'server' });
+    const storage = createMemoryStorage(registry);
+    const server = createEnvironment({
+      registry,
+      user,
+      storage: {
+        ...storage,
+        async lock(meta, ids) {
+          const id = ids[0];
+          if (!id) throw new Error('Missing lock target.');
+          // Simulate the concurrent commit that finished while this lock was waiting.
+          await storage.update(meta, id, { name: 'No longer writable' });
+        },
+      },
+      access: {
+        checkModel: () => undefined,
+        ruleDomain: (_env, _model, operation) =>
+          operation === 'write'
+            ? { kind: 'condition', path: ['name'], operator: '=', value: 'Allowed' }
+            : { kind: 'true' },
+      },
+      audit: { record: () => undefined },
+    });
+    const records = await server.model('lk.item').create({ name: 'Allowed' });
+    await expect(records.lockForUpdate()).rejects.toThrow(AccessError);
+  });
+
   it('count from start by step and validate their arguments', async () => {
     const server = env('server');
     expect(await server.nextValue('doc.number', { start: 100, step: 10 })).toBe(100);

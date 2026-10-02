@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 import * as RadixTabs from '@radix-ui/react-tabs';
+import { useState } from 'react';
 
 import './tabs.css';
 
@@ -11,6 +12,8 @@ export interface TabItem {
 }
 
 export interface TabsProps {
+  /** Retain drafts in inactive panels. The inactive panel stays hidden and unfocusable. */
+  readonly keepMounted?: boolean;
   readonly items: readonly TabItem[];
   /** What the set of tabs is about ("Contact sections"): the tab list is named. */
   readonly label: string;
@@ -31,15 +34,20 @@ export function Tabs({
   value,
   defaultValue,
   onValueChange,
+  keepMounted = false,
 }: TabsProps): React.ReactElement {
   const initial = defaultValue ?? items.find((item) => item.disabled !== true)?.id;
-  const controlled = value === undefined ? {} : { value };
+  const [current, setCurrent] = useState(initial);
+  const selected = value ?? current;
   return (
     <RadixTabs.Root
       className="ui-tabs"
       {...(initial === undefined ? {} : { defaultValue: initial })}
-      {...controlled}
-      {...(onValueChange ? { onValueChange } : {})}
+      {...(selected === undefined ? {} : { value: selected })}
+      onValueChange={(id) => {
+        setCurrent(id);
+        onValueChange?.(id);
+      }}
     >
       <RadixTabs.List className="ui-tab-list" aria-label={label}>
         {items.map((item) => (
@@ -54,7 +62,13 @@ export function Tabs({
         ))}
       </RadixTabs.List>
       {items.map((item) => (
-        <RadixTabs.Content key={item.id} className="ui-tab-panel" value={item.id}>
+        <RadixTabs.Content
+          key={item.id}
+          className="ui-tab-panel"
+          value={item.id}
+          hidden={selected !== item.id}
+          {...(keepMounted ? { forceMount: true } : {})}
+        >
           {item.content}
         </RadixTabs.Content>
       ))}

@@ -1,0 +1,24 @@
+{
+  "name": "@socle/module-mail",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Record conversations, internal notes and personal activities",
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./lib/service.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@socle/framework": "workspace:*",
+    "@socle/module-base": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "@socle/runtime": "workspace:*"
+  }
+}
