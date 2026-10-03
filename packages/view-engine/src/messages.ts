@@ -15,6 +15,8 @@ export interface Messages {
   readonly selectAll: string;
   readonly selected: (count: number) => string;
   readonly clearSelection: string;
+  readonly editRow: string;
+  readonly editingRow: string;
   readonly sortBy: (label: string) => string;
   readonly openRecord: string;
   readonly rowsCount: (count: number) => string;
@@ -60,6 +62,8 @@ const fr: Messages = {
   selectAll: 'Sélectionner toutes les lignes chargées',
   selected: (count) => `${String(count)} sélectionné${count > 1 ? 's' : ''}`,
   clearSelection: 'Tout désélectionner',
+  editRow: 'Modifier la ligne',
+  editingRow: 'Modification de la ligne sélectionnée',
   sortBy: (label) => `Trier par ${label}`,
   openRecord: 'Ouvrir',
   rowsCount: (count) =>
@@ -106,6 +110,8 @@ const en: Messages = {
   selectAll: 'Select all loaded rows',
   selected: (count) => `${String(count)} selected`,
   clearSelection: 'Clear selection',
+  editRow: 'Edit row',
+  editingRow: 'Editing the selected row',
   sortBy: (label) => `Sort by ${label}`,
   openRecord: 'Open',
   rowsCount: (count) =>
@@ -152,6 +158,8 @@ const ar: Messages = {
   selectAll: 'تحديد كل الأسطر المحمّلة',
   selected: (count) => `${String(count)} محدد`,
   clearSelection: 'إلغاء التحديد',
+  editRow: 'تعديل السطر',
+  editingRow: 'تعديل السطر المحدد',
   sortBy: (label) => `الفرز حسب ${label}`,
   openRecord: 'فتح',
   rowsCount: (count) => `${new Intl.NumberFormat('ar').format(count)} سجل`,

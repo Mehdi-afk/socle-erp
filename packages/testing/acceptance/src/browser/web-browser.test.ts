@@ -425,4 +425,74 @@ describe('web client with real PostgreSQL and browser cookies', () => {
     });
     expect(dimensions.content).toBeLessThanOrEqual(dimensions.width + 1);
   });
+  it('edits a list row, protects its draft and persists its value in French and mobile Arabic', async () => {
+    await signIn();
+    await openContacts();
+    expect(new URL(page.url()).origin).toBe(fixture.url);
+    await expect.poll(() => page.title()).toBe('Contact — Socle ERP');
+    const saved = await fixture.readContact();
+    const row = page.getByRole('row').filter({ has: page.getByText(saved.name, { exact: true }) });
+    await row.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Modifier la ligne', exact: true }).click();
+    await page.getByLabel('Nom', { exact: true }).fill('');
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'obligatoire' }).waitFor();
+    await page.getByLabel('Nom', { exact: true }).fill('Atlas édition en liste');
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Modifications en cours' }).waitFor();
+    await page.getByRole('button', { name: 'Rester sur la fiche', exact: true }).click();
+    expect(await page.getByLabel('Nom', { exact: true }).inputValue()).toBe(
+      'Atlas édition en liste',
+    );
+    expect(
+      await page.getByRole('button', { name: 'Trier par Nom', exact: true }).isDisabled(),
+    ).toBe(true);
+    await checkAccessibility('list-edit-fr');
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+    await page.getByText('Atlas édition en liste', { exact: true }).waitFor();
+    expect((await fixture.readContact()).name).toBe('Atlas édition en liste');
+    await page.reload();
+    await page.getByRole('button', { name: 'Se déconnecter', exact: true }).waitFor();
+    await openContacts();
+    await page.getByText('Atlas édition en liste', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByText('Préférences', { exact: true }).click();
+    await page.getByLabel('Densité', { exact: true }).selectOption('compact');
+    await page.getByLabel('Langue', { exact: true }).selectOption('ar');
+    await page.getByText('التفضيلات', { exact: true }).click();
+    const arabicRow = page
+      .getByRole('row')
+      .filter({ has: page.getByText('Atlas édition en liste', { exact: true }) });
+    await arabicRow.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'تعديل السطر', exact: true }).click();
+    await page.getByLabel('الاسم', { exact: true }).fill('أطلس — تعديل السطر');
+    await checkAccessibility('list-edit-ar-mobile');
+    await expect.poll(() => page.locator('html').getAttribute('dir')).toBe('rtl');
+    expect(
+      await page.evaluate(() => {
+        const html = (
+          globalThis as unknown as {
+            document: { documentElement: { clientWidth: number; scrollWidth: number } };
+          }
+        ).document.documentElement;
+        return html.scrollWidth <= html.clientWidth;
+      }),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await page.getByText('أطلس — تعديل السطر', { exact: true }).waitFor();
+    expect((await fixture.readContact()).name).toBe('أطلس — تعديل السطر');
+    await page.getByRole('button', { name: 'تسجيل الخروج', exact: true }).click();
+    await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: 'Se connecter', exact: true }).waitFor();
+    await signIn('reader');
+    await openContacts();
+    const readerRow = page
+      .getByRole('row')
+      .filter({ has: page.getByText('أطلس — تعديل السطر', { exact: true }) });
+    await readerRow.getByRole('checkbox').check();
+    expect(await page.getByRole('button', { name: 'Modifier la ligne', exact: true }).count()).toBe(
+      0,
+    );
+  });
 });
