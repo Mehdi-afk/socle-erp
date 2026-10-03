@@ -252,6 +252,8 @@ export default function Workspace({
                     arch={view.arch}
                     model={route.model}
                     label={entry.label}
+                    editable
+                    onEditStateChange={reportEdit}
                     defaultOrder={client.registry
                       .get(route.model)
                       .order.map(

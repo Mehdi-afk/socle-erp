@@ -23,6 +23,8 @@ export interface Column {
   readonly tones: Readonly<Record<string, unknown>> | undefined;
   /** The database can sort on it (a stored column). */
   readonly sortable: boolean;
+  /** A view can further restrict writes, never relax model permissions. */
+  readonly readonly?: boolean;
 }
 
 const isLocalized = (value: unknown): value is LocalizedText =>
@@ -67,6 +69,7 @@ export function columnsOf(arch: ViewNode, meta: ModelMetadata, language: string)
           ? (tones as Readonly<Record<string, unknown>>)
           : undefined,
       sortable: isStoredMetadata(definition),
+      readonly: child.attrs.readonly === true,
     });
   }
   return columns;

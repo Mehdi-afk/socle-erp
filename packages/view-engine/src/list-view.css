@@ -37,6 +37,26 @@
   font-weight: 500;
 }
 
+.ve-list-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ve-row[data-editing='true'] {
+  background: var(--color-accent-soft);
+}
+
+.ve-inline-input {
+  block-size: 1.75rem;
+  min-block-size: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding-block: 0;
+  padding-inline: var(--space-2);
+}
+
 .ve-list-message {
   display: flex;
   gap: var(--space-3);

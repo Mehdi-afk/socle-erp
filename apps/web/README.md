@@ -27,6 +27,16 @@ Pour une API de développement déjà disponible sur `http://127.0.0.1:8069`, `p
 
 Les préférences de thème, densité et langue restent locales à cette instance de page : hybride, confortable et français au départ, avec anglais et arabe RTL. Le fuseau d’affichage vient du navigateur en attendant le profil utilisateur. Les valeurs métier utilisent les traductions du module, avec le repli prévu par le moteur. Aucune identité humaine n’est déduite d’un identifiant technique.
 
+### Édition dans une liste
+
+Sélectionner une seule ligne puis **Modifier la ligne**, ou placer le focus sur sa ligne et presser **F2**. Les champs scalaires autorisés deviennent des contrôles dans les cellules : texte court, nombres, montants dans la devise existante, dates, choix et booléens. Les relations, textes longs, champs calculés, sensibles ou en lecture seule restent consultables ; leur édition passe par la fiche lorsqu’elle est disponible. Le serveur applique à nouveau ses droits et contraintes à la sauvegarde.
+
+**Enregistrer**, **Entrée** depuis une cellule ou **Ctrl/Cmd+S** soumettent uniquement les valeurs modifiées. **Annuler** ou **Échap** annulent le brouillon sans écrire. Une seule ligne est éditée à la fois ; le tri, la sélection et l’ouverture d’une ligne sont suspendus jusqu’à la fermeture de cet éditeur. Le brouillon reste en mémoire si le défilement virtuel masque sa ligne. Navigation et déconnexion utilisent la même protection des modifications que les fiches.
+
+Une erreur de validation conserve les saisies et place le focus sur le champ concerné. Après une écriture acceptée, la liste est relue pour recalculer l’ordre, le filtre et le total. Si cette lecture échoue, **Réessayer** relance seulement la lecture : la sauvegarde acceptée n’est pas répétée. Après une panne d’écriture dont l’issue est incertaine, reconnecter et relire avant toute nouvelle tentative. Aucun brouillon ne survit au rechargement de la page.
+
+Reproduire : `pnpm --filter @socle/acceptance demo:web`, compte factice gestionnaire, **Contact**, cocher une ligne, **Modifier la ligne**, changer le nom et enregistrer. Le test `pnpm --filter @socle/acceptance test:browser -t "edits a list row"` couvre aussi le refus des champs obligatoires, les brouillons, PostgreSQL, le compte lecteur, l’arabe mobile et axe.
+
 Les menus et actions métier, le choix de société, l’authentification initiale par passkey, son inscription, la récupération de mot de passe, les autres types de vues et la navigation partageable par URL restent à livrer. Les actions sans gestionnaire sont désactivées ; les champs sensibles restent masqués sans gestionnaire de révélation. Ce parcours ne présente pas d’état de synchronisation fictif.
 
 Le sous-chemin `@socle/web/auth` expose le transport d’authentification navigateur et nécessite les types DOM. La racine `@socle/web` conserve le transport de données utilisable sans charger React, CSS ou WebAuthn dans les consommateurs Node.

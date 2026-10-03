@@ -7,11 +7,23 @@
 import type { ViewNode } from '@socle/framework';
 import { Button, EmptyState, Skeleton } from '@socle/ui';
 import { ArrowDown, ArrowUp, ArrowUpDown, Inbox } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { columnsOf, fieldsToRead, nextOrder, sortState, type Column } from './columns.js';
 import { useMessages, useViewContext } from './context.js';
 import { FieldValue } from './field-value.js';
+import type { Draft } from './editing.js';
+import type { FormEditState } from './form-view.js';
+import { ListInput, useListEditing, type ListEditSession } from './list-editing.js';
 import './list-view.css';
 import { useLookups, type Lookups } from './lookups.js';
 import type { Messages } from './messages.js';
@@ -39,6 +51,10 @@ export interface ListViewProps {
   readonly pageSize?: number | undefined;
   /** Height of the visible area when it cannot be measured (tests). */
   readonly viewportHeight?: number | undefined;
+  /** Enables scalar editing when the data source and field metadata permit it. */
+  readonly editable?: boolean;
+  /** Lets the host protect navigation and logout while a list draft is modified or saving. */
+  readonly onEditStateChange?: ((state: FormEditState) => void) | undefined;
 }
 
 interface Loaded {
@@ -62,6 +78,10 @@ interface RowProps {
   readonly version: number;
   readonly messages: Messages;
   readonly onToggle: (id: string) => void;
+  readonly edit: ListEditSession | undefined;
+  readonly editing: boolean;
+  readonly errorsId: string;
+  readonly onChange: (name: string, value: Draft) => void;
 }
 
 const Row = memo(function Row({
@@ -75,6 +95,10 @@ const Row = memo(function Row({
   messages,
   onToggle,
   model,
+  edit,
+  editing,
+  errorsId,
+  onChange,
 }: RowProps): React.ReactElement {
   const view = useViewContext();
   const meta = view.registry.get(model);
@@ -87,6 +111,7 @@ const Row = memo(function Row({
       aria-busy={record === undefined ? 'true' : undefined}
       data-index={index}
       data-record={record?.id}
+      data-editing={edit === undefined ? undefined : 'true'}
       tabIndex={tabbable ? 0 : -1}
       style={{ blockSize: `${String(rowHeight)}px` }}
     >
@@ -95,6 +120,7 @@ const Row = memo(function Row({
           <input
             type="checkbox"
             checked={selected}
+            disabled={editing}
             aria-label={messages.selectRow}
             onChange={() => {
               onToggle(record.id);
@@ -111,6 +137,15 @@ const Row = memo(function Row({
         >
           {record === undefined ? (
             <span className="ve-bar" aria-hidden="true" />
+          ) : edit && Object.hasOwn(edit.drafts, column.name) ? (
+            <ListInput
+              column={column}
+              value={edit.drafts[column.name] ?? ''}
+              errorId={errorsId}
+              invalid={edit.errors[column.name] !== undefined}
+              disabled={edit.saving}
+              onChange={onChange}
+            />
           ) : (
             <FieldValue
               definition={column.definition}
@@ -149,6 +184,8 @@ export function ListView({
   actions,
   pageSize = 100,
   viewportHeight: forcedViewport,
+  editable = false,
+  onEditStateChange,
 }: ListViewProps): React.ReactElement {
   const view = useViewContext();
   const messages = useMessages();
@@ -171,6 +208,51 @@ export function ListView({
   const generationRef = useRef(0);
   const inflightRef = useRef(new Set<number>());
   const domainKey = JSON.stringify(domain ?? []);
+  const errorsId = useId();
+  const editScope = useMemo(
+    () => ({ model, data: view.data, registry: view.registry, arch, domainKey }),
+    [model, view.data, view.registry, arch, domainKey],
+  );
+  const editor = useListEditing({
+    enabled: editable && arch.attrs.readonly !== true,
+    model,
+    columns,
+    lookups,
+    scope: editScope,
+    onEditStateChange,
+    onSaved: () => {
+      setRetry((count) => count + 1);
+    },
+  });
+  const edit = editor.session;
+  const previousEditRef = useRef<string | undefined>(undefined);
+  const previousErrorsRef = useRef<Readonly<Record<string, string>>>({});
+  useEffect(() => {
+    const previous = previousEditRef.current;
+    if (edit && previous !== edit.original.id) {
+      scrollerRef.current?.querySelector<HTMLElement>('[data-inline-input]')?.focus();
+    } else if (!edit && previous !== undefined) {
+      const row = [
+        ...(scrollerRef.current?.querySelectorAll<HTMLElement>('[data-record]') ?? []),
+      ].find((candidate) => candidate.dataset.record === previous);
+      row?.focus({ preventScroll: true });
+    }
+    previousEditRef.current = edit?.original.id;
+  }, [edit]);
+  useEffect(() => {
+    const previous = previousErrorsRef.current;
+    previousErrorsRef.current = edit?.errors ?? {};
+    if (
+      !edit ||
+      edit.saving ||
+      !Object.entries(edit.errors).some(([name, value]) => previous[name] !== value)
+    )
+      return;
+    const input = [
+      ...(scrollerRef.current?.querySelectorAll<HTMLElement>('[data-inline-input]') ?? []),
+    ].find((candidate) => edit.errors[candidate.dataset.inlineInput ?? ''] !== undefined);
+    input?.focus();
+  }, [edit]);
 
   // Start again whenever what is asked for changes (model, search, order, columns, retry): the state
   // is reset while rendering, before anything is drawn from the old query.
@@ -215,6 +297,8 @@ export function ListView({
 
   // Ask for the pages the window needs and does not have.
   useEffect(() => {
+    // A failed read waits for the explicit retry; an accepted write must never be replayed.
+    if (loaded.failed) return;
     const needed: number[] = [];
     if (loaded.total === undefined) needed.push(0);
     else {
@@ -278,6 +362,10 @@ export function ListView({
   );
 
   const total = loaded.total ?? 0;
+  const selectedRecord =
+    selection.size === 1
+      ? [...loaded.pages.values()].flat().find((record) => selection.has(record.id))
+      : undefined;
   const allSelected = loadedIds.length > 0 && loadedIds.every((id) => selection.has(id));
   const someSelected = selection.size > 0 && !allSelected;
 
@@ -307,6 +395,17 @@ export function ListView({
     }
   });
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (
+      edit &&
+      (event.key === 'Escape' ||
+        ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') ||
+        (event.key === 'Enter' && (event.target as HTMLElement).hasAttribute('data-inline-input')))
+    ) {
+      event.preventDefault();
+      if (event.key === 'Escape') editor.cancel();
+      else void editor.save();
+      return;
+    }
     const row = (event.target as HTMLElement).closest<HTMLElement>('[data-index]');
     if (!row || event.target !== row) return;
     const index = Number(row.dataset.index);
@@ -332,11 +431,18 @@ export function ListView({
       },
       Enter: () => {
         const id = row.dataset.record;
-        if (id !== undefined) onOpen?.(id);
+        if (id !== undefined && !edit) onOpen?.(id);
+      },
+      F2: () => {
+        const record = recordAt(index);
+        if (record && !edit) {
+          updateSelection(new Set([record.id]));
+          editor.begin(record);
+        }
       },
       ' ': () => {
         const id = row.dataset.record;
-        if (id !== undefined) toggle(id);
+        if (id !== undefined && !edit) toggle(id);
       },
     };
     const action = Object.hasOwn(handled, event.key) ? handled[event.key] : undefined;
@@ -348,7 +454,7 @@ export function ListView({
 
   const onClick = (event: React.MouseEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement;
-    if (target.closest('a, button, input, label')) return;
+    if (edit || target.closest('a, button, input, select, label')) return;
     const row = target.closest<HTMLElement>('[data-record]');
     if (row?.dataset.record !== undefined) {
       setFocused(Number(row.dataset.index));
@@ -379,6 +485,10 @@ export function ListView({
         version={lookups.version}
         messages={messages}
         onToggle={toggle}
+        edit={record?.id === edit?.original.id ? edit : undefined}
+        editing={edit !== undefined}
+        errorsId={errorsId}
+        onChange={editor.change}
       />,
     );
   }
@@ -388,18 +498,46 @@ export function ListView({
   const template = `2.75rem minmax(12rem, 1.6fr) repeat(${String(Math.max(columns.length - 1, 0))}, minmax(8rem, 1fr))`;
 
   return (
-    <div className="ve-list" data-density={view.density}>
+    <div className="ve-list" data-density={view.density} onKeyDown={onKeyDown}>
       <div className="ve-list-bar">
         <p className="ve-list-count" role="status">
           {loaded.total === undefined ? '' : messages.rowsCount(loaded.total)}
         </p>
-        {selection.size > 0 ? (
+        {edit ? (
+          <div className="ve-list-edit-actions" role="group" aria-label={messages.editingRow}>
+            <span>{messages.editingRow}</span>
+            <Button
+              size="sm"
+              variant="primary"
+              loading={edit.saving}
+              disabled={edit.saving}
+              onClick={() => {
+                void editor.save();
+              }}
+            >
+              {edit.saving ? messages.saving : messages.save}
+            </Button>
+            <Button size="sm" disabled={edit.saving} onClick={editor.cancel}>
+              {messages.cancel}
+            </Button>
+          </div>
+        ) : selection.size > 0 ? (
           <div
             className="ve-list-actions"
             role="group"
             aria-label={messages.selected(selection.size)}
           >
             <span>{messages.selected(selection.size)}</span>
+            {selectedRecord && editor.canEdit(selectedRecord) ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  editor.begin(selectedRecord);
+                }}
+              >
+                {messages.editRow}
+              </Button>
+            ) : null}
             {actions?.(selection)}
             <Button
               size="sm"
@@ -413,6 +551,21 @@ export function ListView({
           </div>
         ) : null}
       </div>
+      {editor.notice ? (
+        <p className="ve-list-count" role="status">
+          {messages.saved}
+        </p>
+      ) : null}
+      {edit && (edit.failure || Object.keys(edit.errors).length > 0) ? (
+        <div className="ve-list-message" role="alert" id={errorsId}>
+          {edit.failure ? <p>{edit.failure}</p> : null}
+          {Object.entries(edit.errors).map(([name, error]) => (
+            <p key={name}>
+              {columns.find((column) => column.name === name)?.label ?? name} : {error}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {loaded.failed ? (
         <div className="ve-list-message" role="alert">
@@ -451,7 +604,6 @@ export function ListView({
           onScroll={(event) => {
             setScrollTop(event.currentTarget.scrollTop);
           }}
-          onKeyDown={onKeyDown}
           onClick={onClick}
           style={
             {
@@ -465,6 +617,7 @@ export function ListView({
               <input
                 type="checkbox"
                 checked={allSelected}
+                disabled={edit !== undefined}
                 ref={(box) => {
                   if (box) box.indeterminate = someSelected;
                 }}
@@ -485,6 +638,7 @@ export function ListView({
                   <button
                     type="button"
                     className="ve-sort"
+                    disabled={edit !== undefined}
                     aria-label={messages.sortBy(column.label)}
                     onClick={() => {
                       setOrder(nextOrder(order, column.name));

@@ -205,6 +205,14 @@ Les routes `/mail/` reprennent le pipeline HTTP, le tenant, la session/CSRF et l
 
 Tests : `modules/mail/tests/mail.test.ts`, transports et composants, ainsi que `packages/testing/acceptance/src/browser/` avec PostgreSQL et cookies réels. Limites et plafonds : [module mail](../../modules/mail/README.md). Le SMTP, les rappels, les mentions et une réplique filtrée par parent restent à livrer ; aucune intégration externe n’est simulée comme disponible.
 
+### 3.14 Édition des listes (F1, lot 2.3)
+
+Les cellules éditables utilisent le transport RPC et le contrôle de session existants. Le navigateur soumet uniquement les champs scalaires modifiés d’une ligne ; ces métadonnées restent indicatives, et les ACL, règles d’enregistrement, contraintes et protections des champs sont rejouées par le serveur. Les colonnes en lecture seule dans la vue, calculées et sensibles n’ont pas d’entrée d’édition.
+
+Les brouillons sont isolés par modèle, source, registre, architecture et domaine. Un changement de source efface l’ancien éditeur avant son affichage et une réponse d’écriture tardive ne modifie pas le nouveau contexte. La navigation et la déconnexion sont protégées ; une soumission en cours bloque les doublons et les transitions. Après acceptation, l’éditeur est fermé avant la relecture : un échec de celle-ci ne remet pas l’écriture en attente. Les reprises de lecture sont explicites. Les saisies restent du texte React, et les montants passent par les conversions exactes du formulaire.
+
+Tests : `packages/view-engine/src/list-editing.test.tsx` couvre les refus, le changement de source, les soumissions concurrentes, la relecture en panne, les filtres et les brouillons virtualisés. Le parcours Chromium avec PostgreSQL `edits a list row` vérifie FR, AR mobile, les droits du lecteur et axe. Les brouillons restent en mémoire ; ils ne sont ni chiffrés dans une réplique locale ni persistés après fermeture.
+
 ## 4. Risques résiduels suivis
 
 | # | Risque | Traitement |
