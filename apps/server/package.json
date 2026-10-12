@@ -18,7 +18,7 @@
     "fast-check": "^4.10.2"
   },
   "dependencies": {
-    "@simplewebauthn/server": "14.0.2",
+    "@simplewebauthn/server": "14.0.3",
     "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
     "@socle/module-mail": "workspace:*",

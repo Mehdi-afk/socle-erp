@@ -24,7 +24,7 @@
     "@socle/framework": "workspace:*",
     "@socle/sync": "workspace:*",
     "kysely": "^0.29.6",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "semver": "^7.8.5",
     "zod": "^4.6.5"
   }

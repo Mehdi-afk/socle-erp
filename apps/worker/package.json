@@ -20,7 +20,7 @@
     "@socle/orm-pg": "workspace:*",
     "@socle/runtime": "workspace:*",
     "kysely": "^0.29.6",
-    "pg-boss": "12.33.4",
+    "pg-boss": "12.36.0",
     "zod": "^4.6.5"
   }
 }
