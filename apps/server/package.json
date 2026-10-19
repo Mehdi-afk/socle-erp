@@ -18,7 +18,7 @@
     "fast-check": "^4.10.2"
   },
   "dependencies": {
-    "@simplewebauthn/server": "14.0.2",
+    "@simplewebauthn/server": "14.0.3",
     "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
     "@socle/module-mail": "workspace:*",
@@ -28,6 +28,6 @@
     "fastify": "^5.12.5",
     "jose": "6.2.12",
     "kysely": "^0.29.6",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   }
 }

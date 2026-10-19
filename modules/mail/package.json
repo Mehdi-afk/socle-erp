@@ -15,7 +15,7 @@
   "dependencies": {
     "@socle/framework": "workspace:*",
     "@socle/module-base": "workspace:*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
