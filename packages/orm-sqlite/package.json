@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@socle/framework": "workspace:*",
-    "kysely": "^0.29.6"
+    "kysely": "^0.29.7"
   },
   "devDependencies": {
     "@socle/testing": "workspace:*",
