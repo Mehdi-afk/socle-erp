@@ -18,16 +18,16 @@
     "fast-check": "^4.10.2"
   },
   "dependencies": {
-    "@simplewebauthn/server": "14.0.2",
+    "@simplewebauthn/server": "14.0.3",
     "@socle/crypto": "workspace:*",
     "@socle/framework": "workspace:*",
     "@socle/module-mail": "workspace:*",
     "@socle/orm-pg": "workspace:*",
     "@socle/runtime": "workspace:*",
     "@socle/sync": "workspace:*",
-    "fastify": "^5.12.5",
-    "jose": "6.2.12",
-    "kysely": "^0.29.6",
-    "zod": "^4.6.5"
+    "fastify": "^5.12.7",
+    "jose": "6.2.13",
+    "kysely": "^0.29.7",
+    "zod": "^4.6.7"
   }
 }

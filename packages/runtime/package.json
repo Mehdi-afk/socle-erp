@@ -15,7 +15,7 @@
   "dependencies": {
     "@socle/framework": "workspace:*",
     "@socle/orm-pg": "workspace:*",
-    "kysely": "^0.29.6",
+    "kysely": "^0.29.7",
     "semver": "^7.8.5"
   },
   "devDependencies": {
